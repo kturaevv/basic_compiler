@@ -1,1 +1,1 @@
-PRINT "Hello, world!"
+PRINT "Hello, world!" 123 1.23

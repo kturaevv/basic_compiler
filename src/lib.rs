@@ -1,6 +1,9 @@
 pub mod lexer;
 
+use std::fs;
+
 use anyhow::Result;
+use lexer::Lexer;
 
 pub struct Config {
     pub file_path: String,
@@ -8,6 +11,9 @@ pub struct Config {
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, &'static str> {
+        if args.len() == 1 {
+            return Err("File path was not provided!");
+        }
         if args.len() > 2 {
             return Err("Too many arguments!");
         }
@@ -17,6 +23,8 @@ impl Config {
 }
 
 pub fn run(config: Config) -> Result<()> {
-    lexer::Lexer::parse(config.file_path.as_str())?;
+    let contents = fs::read_to_string(config.file_path)?;
+    let mut lexer = Lexer::new();
+    lexer.parse(contents.as_str())?;
     Ok(())
 }
