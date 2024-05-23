@@ -1,0 +1,42 @@
+# Binaries for programs and libraries
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.so
+
+# Test binary, created with `cargo test`
+/target/debug/deps/test-*
+/target/debug/deps/test-*
+
+# Output of cargo test
+*.log
+
+# Rust logs
+*.rs.bk
+
+# Cargo package
+*.crate
+
+# Standard Rust build directory
+/target/
+
+# Any other binaries
+**/*.rs.bk
+
+# Optional by IDEs
+**/*.vscode
+**/*.idea
+
+# IntelliJ IDEA files
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Visual Studio Code files
+.vscode/
+
+# MacOS and Windows files
+.DS_Store
+Thumbs.db
