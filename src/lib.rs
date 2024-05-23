@@ -1,4 +1,6 @@
-use std::{error::Error, fs};
+pub mod lexer;
+
+use anyhow::Result;
 
 pub struct Config {
     pub file_path: String,
@@ -14,8 +16,7 @@ impl Config {
     }
 }
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let contents = fs::read_to_string(config.file_path)?;
-    println!("{contents}");
+pub fn run(config: Config) -> Result<()> {
+    lexer::Lexer::parse(config.file_path.as_str())?;
     Ok(())
 }
