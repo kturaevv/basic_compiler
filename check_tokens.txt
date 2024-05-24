@@ -1,1 +1,3 @@
++- */
 PRINT "Hello, world!" 123 1.23
+IF+-123 foo*THEN/
