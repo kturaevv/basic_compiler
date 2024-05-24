@@ -82,60 +82,24 @@ impl Lexer {
     pub fn parse(&mut self, contents: &str) -> Result<()> {
         let mut contents = contents.chars().peekable();
 
-        while let Some(current_character) = contents.next() {
-            // Check next char
-            let next_char = contents.peek();
-
-            // Skip whitespace
-            if current_character.is_whitespace() {
-                if current_character == '\n' {
-                    self.tokens.push(Token::NEWLINE);
-                }
-                continue;
-            }
-
-            // Skip comments
-            if current_character == '#' {
-                while let Some(&ch) = contents.peek() {
-                    if ch == '\n' {
-                        break;
-                    }
-                    contents.next();
-                }
-                continue;
-            }
-
-            // Handle single and multi-character tokens
+        while let Some(cur_char) = contents.next() {
             let mut current_token = String::new();
-            if current_character != '"' {
-                current_token.push(current_character);
-            }
 
-            // Handle 2-char tokens
-            if next_char.is_some() {
-                current_token.push(*next_char.unwrap());
-                if let Some(multi_char_token) = Token::from_str(&current_token) {
-                    self.tokens.push(multi_char_token);
-                    contents.next(); // Consume the peeked character
+            match cur_char {
+                '\n' => {
+                    self.tokens.push(Token::NEWLINE);
                     continue;
-                } else {
-                    current_token.pop();
                 }
-            }
-
-            // Handle 1-char token
-            if let Some(single_char_token) = Token::from_str(&current_token) {
-                self.tokens.push(single_char_token);
-                continue;
-            }
-
-            // Handle keywords and literals
-            if current_character.is_alphabetic() {
-                self.read_keyword(&mut contents, &mut current_token);
-            } else if current_character == '"' {
-                self.read_string(&mut contents, &mut current_token);
-            } else if current_character.is_numeric() {
-                self.read_number(&mut contents, &mut current_token);
+                '#' => self.skip_comments(&mut contents),
+                '"' => self.read_string(&mut contents, &mut current_token),
+                _ if cur_char.is_whitespace() => continue,
+                _ if cur_char.is_alphabetic() => {
+                    self.read_keyword(&mut contents, &mut current_token, &cur_char)
+                }
+                _ if cur_char.is_numeric() => {
+                    self.read_number(&mut contents, &mut current_token, &cur_char)
+                }
+                _ => self.read_short_keyword(&mut contents, &mut current_token, &cur_char),
             }
         }
 
@@ -146,14 +110,58 @@ impl Lexer {
         Token::from_str(character.to_string().as_str()).is_some()
     }
 
-    fn read_keyword(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
+    fn skip_comments(&mut self, contents: &mut Peekable<Chars>) {
+        while let Some(&ch) = contents.peek() {
+            if ch == '\n' {
+                break;
+            }
+            contents.next();
+        }
+    }
+
+    pub fn read_short_keyword(
+        &mut self,
+        contents: &mut Peekable<Chars>,
+        token: &mut String,
+        current_character: &char,
+    ) {
+        if token.is_empty() {
+            token.push(*current_character)
+        }
+
+        // Handle 2-char tokens
+        if let Some(next_char) = contents.peek() {
+            token.push(*next_char);
+            if let Some(multi_char_token) = Token::from_str(token) {
+                self.tokens.push(multi_char_token);
+                contents.next(); // Consume the peeked character
+                return;
+            } else {
+                token.pop();
+            }
+        }
+
+        // Handle 1-char token
+        if let Some(single_char_token) = Token::from_str(token) {
+            self.tokens.push(single_char_token);
+        }
+    }
+
+    fn read_keyword(
+        &mut self,
+        contents: &mut Peekable<Chars>,
+        token: &mut String,
+        current_character: &char,
+    ) {
+        token.push(*current_character);
+
         while let Some(current_character) = contents.next() {
             if current_character.is_whitespace() {
                 break;
             }
             token.push(current_character);
 
-            // If next char is special char. break
+            // If special character like + goes right after
             if let Some(next_char) = contents.peek() {
                 if self.is_keyword(next_char) {
                     break;
@@ -168,17 +176,14 @@ impl Lexer {
         }
     }
 
-    fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
-        for current_character in contents {
-            if current_character == '"' {
-                break;
-            }
-            token.push(current_character);
-        }
-        self.tokens.push(Token::STRING(token.clone()));
-    }
+    fn read_number(
+        &mut self,
+        contents: &mut Peekable<Chars>,
+        token: &mut String,
+        current_character: &char,
+    ) {
+        token.push(*current_character);
 
-    fn read_number(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
         let mut is_float = false;
 
         while let Some(current_character) = contents.next() {
@@ -211,5 +216,15 @@ impl Lexer {
                 Err(_) => println!("Failed to parse TOKEN::INTEGER {token}"),
             }
         }
+    }
+
+    fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
+        for current_character in contents {
+            if current_character == '"' {
+                break;
+            }
+            token.push(current_character);
+        }
+        self.tokens.push(Token::STRING(token.clone()));
     }
 }
