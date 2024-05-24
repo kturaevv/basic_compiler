@@ -26,5 +26,10 @@ pub fn run(config: Config) -> Result<()> {
     let contents = fs::read_to_string(config.file_path)?;
     let mut lexer = Lexer::new();
     lexer.parse(contents.as_str())?;
+
+    for i in lexer.tokens {
+        println!("TOKEN::{:?}", i);
+    }
+
     Ok(())
 }

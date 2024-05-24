@@ -1,3 +1,5 @@
-+- */
++- # This is a comment!\n */
+/- */ >>= = !=
 PRINT "Hello, world!" 123 1.23
-IF+-123 foo*THEN/
+IF+-123 foo*THEN/ "another string"
+INPUT LET IF "comment" THEN WHILE

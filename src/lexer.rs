@@ -3,10 +3,10 @@ use std::{iter::Peekable, str::Chars};
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
-enum Token {
+pub enum Token {
     EOF,
+    VARIABLE,
     NEWLINE,
-    IDENT,
     STRING(String),
     INTEGER(i64),
     FLOAT(f64),
@@ -55,12 +55,13 @@ impl Token {
             "-" => Some(Token::MINUS),
             "*" => Some(Token::ASTERISK),
             "/" => Some(Token::SLASH),
-            "==" => Some(Token::EQEQ),
-            "!=" => Some(Token::NOTEQ),
             "<" => Some(Token::LT),
-            "<=" => Some(Token::LTEQ),
             ">" => Some(Token::GT),
+            "==" => Some(Token::EQEQ),
+            "<=" => Some(Token::LTEQ),
             ">=" => Some(Token::GTEQ),
+            "!=" => Some(Token::NOTEQ),
+            "\n" => Some(Token::NEWLINE),
             _ => None,
         }
     }
@@ -68,7 +69,7 @@ impl Token {
 
 #[derive(Default)]
 pub struct Lexer {
-    tokens: Vec<Token>,
+    pub tokens: Vec<Token>,
 }
 
 impl Lexer {
@@ -81,65 +82,91 @@ impl Lexer {
     pub fn parse(&mut self, contents: &str) -> Result<()> {
         let mut contents = contents.chars().peekable();
 
-        while let Some(&current_character) = contents.peek() {
+        while let Some(current_character) = contents.next() {
+            // Skip whitespace
+            if current_character.is_whitespace() {
+                if current_character == '\n' {
+                    self.tokens.push(Token::NEWLINE);
+                }
+                continue;
+            }
+
+            // Skip comments
+            if current_character == '#' {
+                while let Some(&ch) = contents.peek() {
+                    if ch == '\n' {
+                        break;
+                    }
+                    contents.next();
+                }
+                continue;
+            }
+
+            // Handle single and multi-character tokens
+            let mut current_token = String::new();
+            if current_character != '"' {
+                current_token.push(current_character);
+            }
+
+            // Handle 2-char tokens
+            if let Some(next_char) = contents.peek() {
+                current_token.push(*next_char);
+                if let Some(multi_char_token) = Token::from_str(&current_token) {
+                    self.tokens.push(multi_char_token);
+                    contents.next(); // Consume the peeked character
+                    continue;
+                } else {
+                    current_token.pop();
+                }
+            }
+
+            // Handle 1-char token
+            if let Some(single_char_token) = Token::from_str(&current_token) {
+                self.tokens.push(single_char_token);
+                continue;
+            }
+
+            // Handle keywords and literals
             if current_character.is_alphabetic() {
-                self.read_keyword(&mut contents);
+                self.read_keyword(&mut contents, &mut current_token);
             } else if current_character == '"' {
-                self.read_string(&mut contents);
-            } else if current_character.is_alphanumeric() {
-                self.read_number(&mut contents);
-            } else {
-                contents.next();
+                self.read_string(&mut contents, &mut current_token);
+            } else if current_character.is_numeric() {
+                self.read_number(&mut contents, &mut current_token);
             }
         }
-        println!("{:?}", self.tokens);
 
         Ok(())
     }
 
-    fn read_keyword(&mut self, contents: &mut Peekable<Chars>) {
-        let mut token_string = String::new();
-
+    fn read_keyword(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
         while let Some(&current_character) = contents.peek() {
-            contents.next();
-
             if current_character.is_whitespace() {
-                break; // ERROR
-            }
-            token_string.push(current_character);
-
-            let token = Token::from_str(token_string.as_str());
-            if let Some(token) = token {
-                self.tokens.push(token);
-                return;
-            }
-        }
-
-        let token = Token::from_str(token_string.as_str());
-        if let Some(token) = token {
-            self.tokens.push(token);
-        } else {
-            eprintln!("ERROR: Unknown token! {token_string}");
-        }
-    }
-
-    fn read_string(&mut self, contents: &mut Peekable<Chars>) {
-        contents.next(); // Skip opening quotes
-
-        let mut token = String::new();
-        while let Some(&current_character) = contents.peek() {
-            contents.next();
-            if current_character == '"' {
                 break;
             }
             token.push(current_character);
+            contents.next();
         }
-        self.tokens.push(Token::STRING(token));
+
+        if let Some(keyword_token) = Token::from_str(token.as_str()) {
+            self.tokens.push(keyword_token);
+        }
     }
 
-    fn read_number(&mut self, contents: &mut Peekable<Chars>) {
+    fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
+        while let Some(&current_character) = contents.peek() {
+            if current_character == '"' {
+                contents.next();
+                break;
+            }
+            token.push(current_character);
+            contents.next();
+        }
+        self.tokens.push(Token::STRING(token.clone()));
+    }
+
+    fn read_number(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
         let mut is_float = false;
-        let mut tok = String::new();
 
         while let Some(&current_character) = contents.peek() {
             if current_character.is_whitespace() {
@@ -150,23 +177,14 @@ impl Lexer {
                 is_float = true;
             }
 
-            tok.push(current_character);
+            token.push(current_character);
             contents.next();
         }
 
-        match is_float {
-            true => self
-                .tokens
-                .push(Token::FLOAT(tok.parse().unwrap_or_else(|err| {
-                    println!("Error parsing float: {err}");
-                    1.0 // Default value in case of an error
-                }))),
-            false => self
-                .tokens
-                .push(Token::INTEGER(tok.parse().unwrap_or_else(|err| {
-                    println!("Error parsing integer: {err}");
-                    1
-                }))),
-        };
+        if is_float {
+            self.tokens.push(Token::FLOAT(token.parse().unwrap_or(1.0)));
+        } else {
+            self.tokens.push(Token::INTEGER(token.parse().unwrap_or(1)));
+        }
     }
 }
