@@ -5,8 +5,8 @@ use std::{iter::Peekable, str::Chars};
 #[derive(Debug)]
 pub enum Token {
     EOF,
-    VARIABLE,
     NEWLINE,
+    VARIABLE(String),
     STRING(String),
     INTEGER(i64),
     FLOAT(f64),
@@ -83,6 +83,9 @@ impl Lexer {
         let mut contents = contents.chars().peekable();
 
         while let Some(current_character) = contents.next() {
+            // Check next char
+            let next_char = contents.peek();
+
             // Skip whitespace
             if current_character.is_whitespace() {
                 if current_character == '\n' {
@@ -109,8 +112,8 @@ impl Lexer {
             }
 
             // Handle 2-char tokens
-            if let Some(next_char) = contents.peek() {
-                current_token.push(*next_char);
+            if next_char.is_some() {
+                current_token.push(*next_char.unwrap());
                 if let Some(multi_char_token) = Token::from_str(&current_token) {
                     self.tokens.push(multi_char_token);
                     contents.next(); // Consume the peeked character
@@ -139,28 +142,38 @@ impl Lexer {
         Ok(())
     }
 
+    fn is_keyword(&mut self, character: &char) -> bool {
+        Token::from_str(character.to_string().as_str()).is_some()
+    }
+
     fn read_keyword(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
-        while let Some(&current_character) = contents.peek() {
+        while let Some(current_character) = contents.next() {
             if current_character.is_whitespace() {
                 break;
             }
             token.push(current_character);
-            contents.next();
+
+            // If next char is special char. break
+            if let Some(next_char) = contents.peek() {
+                if self.is_keyword(next_char) {
+                    break;
+                }
+            }
         }
 
         if let Some(keyword_token) = Token::from_str(token.as_str()) {
             self.tokens.push(keyword_token);
+        } else {
+            self.tokens.push(Token::VARIABLE(token.clone()));
         }
     }
 
     fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
-        while let Some(&current_character) = contents.peek() {
+        for current_character in contents {
             if current_character == '"' {
-                contents.next();
                 break;
             }
             token.push(current_character);
-            contents.next();
         }
         self.tokens.push(Token::STRING(token.clone()));
     }
@@ -168,7 +181,7 @@ impl Lexer {
     fn read_number(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
         let mut is_float = false;
 
-        while let Some(&current_character) = contents.peek() {
+        while let Some(current_character) = contents.next() {
             if current_character.is_whitespace() {
                 break;
             }
@@ -178,13 +191,25 @@ impl Lexer {
             }
 
             token.push(current_character);
-            contents.next();
+
+            // If special character like + goes right after
+            if let Some(next_char) = contents.peek() {
+                if self.is_keyword(next_char) {
+                    break;
+                }
+            }
         }
 
         if is_float {
-            self.tokens.push(Token::FLOAT(token.parse().unwrap_or(1.0)));
+            match token.parse::<f64>() {
+                Ok(token) => self.tokens.push(Token::FLOAT(token)),
+                Err(_) => println!("Failed to parse TOKEN::FLOAT {token}"),
+            }
         } else {
-            self.tokens.push(Token::INTEGER(token.parse().unwrap_or(1)));
+            match token.parse::<i64>() {
+                Ok(token) => self.tokens.push(Token::INTEGER(token)),
+                Err(_) => println!("Failed to parse TOKEN::INTEGER {token}"),
+            }
         }
     }
 }
