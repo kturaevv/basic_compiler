@@ -86,12 +86,12 @@ impl Lexer {
             let mut current_token = String::new();
 
             match cur_char {
-                '\n' => {
-                    self.tokens.push(Token::NEWLINE);
-                    continue;
-                }
+                '\n' => self.tokens.push(Token::NEWLINE),
                 '#' => self.skip_comments(&mut contents),
                 '"' => self.read_string(&mut contents, &mut current_token),
+                '=' | '+' | '-' | '*' | '/' | '<' | '>' | '!' => {
+                    self.read_short_keyword(&mut contents, &mut current_token, &cur_char)
+                }
                 _ if cur_char.is_whitespace() => continue,
                 _ if cur_char.is_alphabetic() => {
                     self.read_keyword(&mut contents, &mut current_token, &cur_char)
@@ -99,7 +99,7 @@ impl Lexer {
                 _ if cur_char.is_numeric() => {
                     self.read_number(&mut contents, &mut current_token, &cur_char)
                 }
-                _ => self.read_short_keyword(&mut contents, &mut current_token, &cur_char),
+                _ => panic!("Unknown Token! {cur_char}"),
             }
         }
 
@@ -119,7 +119,7 @@ impl Lexer {
         }
     }
 
-    pub fn read_short_keyword(
+    fn read_short_keyword(
         &mut self,
         contents: &mut Peekable<Chars>,
         token: &mut String,
