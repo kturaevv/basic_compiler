@@ -106,17 +106,19 @@ impl Lexer {
         Ok(())
     }
 
-    fn is_keyword(&mut self, character: &char) -> bool {
+    fn is_keyword(&self, character: &char) -> bool {
         Token::from_str(character.to_string().as_str()).is_some()
     }
 
-    fn skip_comments(&mut self, contents: &mut Peekable<Chars>) {
-        while let Some(&ch) = contents.peek() {
-            if ch == '\n' {
-                break;
-            }
-            contents.next();
+    fn next_is_keyword(&self, contents: &mut Peekable<Chars>) -> bool {
+        if let Some(next_char) = contents.peek() {
+            return self.is_keyword(next_char);
         }
+        false
+    }
+
+    fn skip_comments(&mut self, contents: &mut Peekable<Chars>) {
+        contents.find(|&ch| ch == '\n');
     }
 
     fn read_short_keyword(
@@ -161,11 +163,8 @@ impl Lexer {
             }
             token.push(current_character);
 
-            // If special character like + goes right after
-            if let Some(next_char) = contents.peek() {
-                if self.is_keyword(next_char) {
-                    break;
-                }
+            if self.next_is_keyword(contents) {
+                break;
             }
         }
 
@@ -197,11 +196,8 @@ impl Lexer {
 
             token.push(current_character);
 
-            // If special character like + goes right after
-            if let Some(next_char) = contents.peek() {
-                if self.is_keyword(next_char) {
-                    break;
-                }
+            if self.next_is_keyword(contents) {
+                break;
             }
         }
 
@@ -219,12 +215,7 @@ impl Lexer {
     }
 
     fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
-        for current_character in contents {
-            if current_character == '"' {
-                break;
-            }
-            token.push(current_character);
-        }
+        token.extend(contents.take_while(|&c| c != '"'));
         self.tokens.push(Token::STRING(token.clone()));
     }
 }
