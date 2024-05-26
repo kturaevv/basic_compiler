@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::{iter::Peekable, str::Chars};
 
 #[allow(clippy::upper_case_acronyms)]
@@ -99,7 +99,7 @@ impl Lexer {
                 _ if cur_char.is_numeric() => {
                     self.read_number(&mut contents, &mut current_token, &cur_char)
                 }
-                _ => panic!("Unknown Token! {cur_char}"),
+                _ => Err(anyhow!("Unknown token: {}", cur_char))?,
             }
         }
 

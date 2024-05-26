@@ -12,7 +12,7 @@ fn main() {
     });
 
     if let Err(e) = run(config) {
-        println!("Something went wrong here! {e}");
+        println!("Compilation error: {e}");
         std::process::exit(1)
     }
 }
