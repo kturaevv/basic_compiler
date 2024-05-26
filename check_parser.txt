@@ -1,0 +1,6 @@
+GOTO b
+INPUT d
+LET c = a + b - c
+IF foo > 0 THEN
+    PRINT "yes!"
+ENDIF

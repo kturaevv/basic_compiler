@@ -1,9 +1,11 @@
 pub mod lexer;
+pub mod parser;
 
 use std::fs;
 
 use anyhow::Result;
 use lexer::Lexer;
+use parser::Parser;
 
 pub struct Config {
     pub file_path: String,
@@ -24,13 +26,12 @@ impl Config {
 
 pub fn run(config: Config) -> Result<()> {
     let contents = fs::read_to_string(config.file_path)?;
-    let mut lexer = Lexer::new();
 
+    let mut lexer = Lexer::new();
     lexer.parse(contents.as_str())?;
 
-    for i in lexer.tokens {
-        println!("{}", i);
-    }
+    let mut parser = Parser::new();
+    parser.check(&lexer)?;
 
     Ok(())
 }

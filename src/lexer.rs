@@ -86,7 +86,7 @@ impl Lexer {
             let mut current_token = String::new();
 
             match cur_char {
-                '\n' => self.tokens.push(Token::NEWLINE),
+                '\n' | '\r' => self.tokens.push(Token::NEWLINE),
                 '#' => self.skip_comments(&mut contents),
                 '"' => self.read_string(&mut contents, &mut current_token),
                 '=' | '+' | '-' | '*' | '/' | '<' | '>' | '!' => {
@@ -157,11 +157,12 @@ impl Lexer {
     ) {
         token.push(*current_character);
 
-        while let Some(current_character) = contents.next() {
+        while let Some(&current_character) = contents.peek() {
             if current_character.is_whitespace() {
                 break;
             }
             token.push(current_character);
+            contents.next();
 
             if self.next_is_keyword(contents) {
                 break;
@@ -185,7 +186,7 @@ impl Lexer {
 
         let mut is_float = false;
 
-        while let Some(current_character) = contents.next() {
+        while let Some(&current_character) = contents.peek() {
             if current_character.is_whitespace() {
                 break;
             }
@@ -194,6 +195,7 @@ impl Lexer {
                 is_float = true;
             }
 
+            contents.next();
             token.push(current_character);
 
             if self.next_is_keyword(contents) {
