@@ -38,32 +38,32 @@ pub enum Token {
 
 impl Token {
     fn from_str(token: &str) -> Option<Token> {
-        match token {
-            "PRINT" => Some(Token::PRINT),
-            "LABEL" => Some(Token::LABEL),
-            "GOTO" => Some(Token::GOTO),
-            "INPUT" => Some(Token::INPUT),
-            "LET" => Some(Token::LET),
-            "IF" => Some(Token::IF),
-            "THEN" => Some(Token::THEN),
-            "ENDIF" => Some(Token::ENDIF),
-            "WHILE" => Some(Token::WHILE),
-            "REPEAT" => Some(Token::REPEAT),
-            "ENDWHILE" => Some(Token::ENDWHILE),
-            "=" => Some(Token::EQ),
-            "+" => Some(Token::PLUS),
-            "-" => Some(Token::MINUS),
-            "*" => Some(Token::ASTERISK),
-            "/" => Some(Token::SLASH),
-            "<" => Some(Token::LT),
-            ">" => Some(Token::GT),
-            "==" => Some(Token::EQEQ),
-            "<=" => Some(Token::LTEQ),
-            ">=" => Some(Token::GTEQ),
-            "!=" => Some(Token::NOTEQ),
-            "\n" => Some(Token::NEWLINE),
-            _ => None,
-        }
+        Some(match token {
+            "PRINT" => Token::PRINT,
+            "LABEL" => Token::LABEL,
+            "GOTO" => Token::GOTO,
+            "INPUT" => Token::INPUT,
+            "LET" => Token::LET,
+            "IF" => Token::IF,
+            "THEN" => Token::THEN,
+            "ENDIF" => Token::ENDIF,
+            "WHILE" => Token::WHILE,
+            "REPEAT" => Token::REPEAT,
+            "ENDWHILE" => Token::ENDWHILE,
+            "=" => Token::EQ,
+            "+" => Token::PLUS,
+            "-" => Token::MINUS,
+            "*" => Token::ASTERISK,
+            "/" => Token::SLASH,
+            "<" => Token::LT,
+            ">" => Token::GT,
+            "==" => Token::EQEQ,
+            "<=" => Token::LTEQ,
+            ">=" => Token::GTEQ,
+            "!=" => Token::NOTEQ,
+            "\n" => Token::NEWLINE,
+            _ => return None,
+        })
     }
 }
 
@@ -217,5 +217,11 @@ impl Lexer {
     fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
         token.extend(contents.take_while(|&c| c != '"'));
         self.tokens.push(Token::STRING(token.clone()));
+    }
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TOKEN::{:?}", self)
     }
 }
