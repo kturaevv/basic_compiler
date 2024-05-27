@@ -1,11 +1,13 @@
 use crate::lexer::{Lexer, Token};
 use anyhow::{anyhow, Ok, Result};
-use core::fmt;
+use std::collections::HashSet;
 use std::iter::Peekable;
 
 #[derive(Default)]
 pub struct Parser {
-    tokens: Vec<Token>,
+    variables: HashSet<String>,
+    labels_declared: HashSet<String>,
+    labels_gotoed: HashSet<String>,
 }
 
 impl Parser {
@@ -20,10 +22,14 @@ impl Parser {
         let mut tokens = lexer.tokens.iter().peekable();
 
         while tokens.peek().is_some() {
-            println!("--- {} ---", tokens.peek().unwrap());
             self.statement(&mut tokens)?;
         }
 
+        for label in &self.labels_gotoed {
+            if self.labels_declared.contains(label) {
+                return Err(anyhow!("Attemt to GOTO to undeclared label! {label}"));
+            }
+        }
         Ok(())
     }
 
@@ -53,15 +59,17 @@ impl Parser {
         Ok(())
     }
 
-    fn var<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn var<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<String>
     where
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::VARIABLE(value)) => println!("var ({value})"),
+            Some(Token::VARIABLE(value)) => {
+                println!("VAR ({value})");
+                Ok(value.clone())
+            }
             _ => Err(anyhow!("Invalid variable!"))?,
         }
-        Ok(())
     }
 
     fn nl<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
@@ -158,7 +166,12 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         println!("STATEMENT: LABEL");
-        self.var(tokens)?;
+        let var = self.var(tokens)?;
+
+        if !self.labels_declared.insert(var.clone()) {
+            return Err(anyhow!("Label aready exists! {var}"));
+        }
+
         self.nl(tokens)?;
         Ok(())
     }
@@ -169,8 +182,13 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         println!("STATEMENT: GOTO");
-        self.var(tokens)?;
+
+        let var = self.var(tokens)?;
+
+        self.labels_gotoed.insert(var.clone());
+
         self.nl(tokens)?;
+
         Ok(())
     }
 
@@ -180,7 +198,10 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         println!("STATEMENT: LET");
-        self.var(tokens)?;
+
+        let var = self.var(tokens)?;
+
+        self.variables.insert(var);
 
         match tokens.next() {
             Some(Token::EQ) => println!("STATEMENT: EQ"),
@@ -198,7 +219,10 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         println!("STATEMENT: INPUT");
-        self.var(tokens)?;
+        let var = self.var(tokens)?;
+
+        self.variables.insert(var);
+
         self.nl(tokens)?;
         Ok(())
     }
@@ -328,7 +352,12 @@ impl Parser {
         match tokens.next() {
             Some(Token::INTEGER(value)) => println!("PRIMARY ({value})"),
             Some(Token::FLOAT(value)) => println!("PRIMARY ({value})"),
-            Some(Token::VARIABLE(value)) => println!("var ({value})"),
+            Some(Token::VARIABLE(value)) => {
+                if !self.variables.contains(value) {
+                    Err(anyhow!("Variable referenced before assignment!"))?
+                }
+                println!("var ({value})");
+            }
             Some(token) => Err(anyhow!("Unexpected token! {token}"))?,
             None => Err(anyhow!("Unexpected token! None"))?,
         }
