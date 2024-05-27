@@ -1,5 +1,6 @@
 use crate::lexer::{Lexer, Token};
 use anyhow::{anyhow, Ok, Result};
+use core::fmt;
 use std::iter::Peekable;
 
 #[derive(Default)]
@@ -26,15 +27,40 @@ impl Parser {
         Ok(())
     }
 
+    // statement ::= PRINT (expression | string) nl
+    //               IF comparison "THEN" nl {statement} "ENDIF" nl
+    //               WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
+    //               LABEL var nl
+    //               GOTO var nl
+    //               LET var "=" expression nl
+    //               INPUT var nl
+    fn statement<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        match tokens.next() {
+            Some(Token::NEWLINE) => println!("NEWLINE"),
+            Some(Token::PRINT) => self.statement_print(tokens)?,
+            Some(Token::IF) => self.statement_if(tokens)?,
+            Some(Token::WHILE) => self.statement_while(tokens)?,
+            Some(Token::LABEL) => self.statement_label(tokens)?,
+            Some(Token::GOTO) => self.statement_goto(tokens)?,
+            Some(Token::LET) => self.statement_let(tokens)?,
+            Some(Token::INPUT) => self.statement_input(tokens)?,
+            Some(token) => Err(anyhow!("Invalid statement at: {token}"))?,
+            None => panic!("None encountered!!!"),
+        }
+        Ok(())
+    }
+
     fn var<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::VARIABLE(value)) => println!("IDENT ({value})"),
+            Some(Token::VARIABLE(value)) => println!("var ({value})"),
             _ => Err(anyhow!("Invalid variable!"))?,
         }
-
         Ok(())
     }
 
@@ -50,113 +76,130 @@ impl Parser {
     }
 
     // statement ::= PRINT (expression | string) nl
-    //               IF comparison "THEN" nl {statement} "ENDIF" nl
-    //               WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
-    //               LABEL ident nl
-    //               GOTO ident nl
-    //               LET ident "=" expression nl
-    //               INPUT ident nl
-    fn statement<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_print<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = &'a Token>,
     {
-        match tokens.next() {
-            Some(Token::NEWLINE) => {
-                println!("NEWLINE");
+        println!("STATEMENT: PRINT");
+        match tokens.peek() {
+            Some(Token::STRING(value)) => {
+                println!("STRING: {value}");
+                tokens.next();
             }
-            Some(Token::PRINT) => {
-                println!("STATEMENT: PRINT");
-                match tokens.peek() {
-                    Some(Token::STRING(value)) => {
-                        println!("STRING: {value}");
-                        tokens.next();
-                    }
-                    _ => self.expression(tokens)?,
-                }
-                self.nl(tokens)?;
-            }
-            Some(Token::IF) => {
-                println!("STATEMENT: IF");
-
-                self.comparison(tokens)?;
-
-                match tokens.next() {
-                    Some(Token::THEN) => println!("STATEMENT: THEN"),
-                    val => return Err(anyhow!("IF should be followed by THEN, got {:?}", val)),
-                }
-
-                self.nl(tokens)?;
-
-                while let Some(token) = tokens.peek() {
-                    match token {
-                        Token::ENDIF => {
-                            println!("STATEMENT: ENDIF");
-                            tokens.next();
-                            self.nl(tokens)?;
-                            return Ok(());
-                        }
-                        _ => self.statement(tokens)?,
-                    }
-                }
-                return Err(anyhow!("IF should be followed by ENDIF"));
-            }
-            Some(Token::WHILE) => {
-                println!("STATEMENT: WHILE");
-
-                self.comparison(tokens)?;
-
-                match tokens.next() {
-                    Some(Token::REPEAT) => println!("STATEMENT: REPEAT"),
-                    val => {
-                        return Err(anyhow!("WHILE should be followed by REPEAT, got {:?}", val))
-                    }
-                }
-
-                self.nl(tokens)?;
-
-                while let Some(token) = tokens.peek() {
-                    match token {
-                        Token::ENDWHILE => {
-                            println!("STATEMENT: ENDWHILE");
-                            tokens.next();
-                            self.nl(tokens)?;
-                            return Ok(());
-                        }
-                        _ => self.statement(tokens)?,
-                    }
-                }
-                return Err(anyhow!("WHILE should be followed by ENDWHILE",));
-            }
-            Some(Token::LABEL) => {
-                println!("STATEMENT: LABEL");
-                self.var(tokens)?;
-                self.nl(tokens)?;
-            }
-            Some(Token::GOTO) => {
-                println!("STATEMENT: GOTO");
-                self.var(tokens)?;
-                self.nl(tokens)?;
-            }
-            Some(Token::LET) => {
-                println!("STATEMENT: LET");
-                self.var(tokens)?;
-
-                match tokens.next() {
-                    Some(Token::EQ) => println!("STATEMENT: EQ"),
-                    val => return Err(anyhow!("LET should be followed by '=', got {:?}", val)),
-                }
-
-                self.expression(tokens)?;
-                self.nl(tokens)?;
-            }
-            Some(Token::INPUT) => {
-                println!("STATEMENT: INPUT");
-                self.var(tokens)?;
-                self.nl(tokens)?;
-            }
-            Some(token) => Err(anyhow!("Invalid statement at: {token}"))?,
-            None => panic!("None encountered!!!"),
+            _ => self.expression(tokens)?,
         }
+        self.nl(tokens)?;
+        Ok(())
+    }
+
+    // statement ::= IF comparison "THEN" nl {statement} "ENDIF" nl
+    fn statement_if<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        println!("STATEMENT: IF");
+
+        self.comparison(tokens)?;
+
+        match tokens.next() {
+            Some(Token::THEN) => println!("STATEMENT: THEN"),
+            val => return Err(anyhow!("IF should be followed by THEN, got {:?}", val)),
+        }
+
+        self.nl(tokens)?;
+
+        while let Some(token) = tokens.peek() {
+            match token {
+                Token::ENDIF => {
+                    println!("STATEMENT: ENDIF");
+                    tokens.next();
+                    self.nl(tokens)?;
+                    return Ok(());
+                }
+                _ => self.statement(tokens)?,
+            }
+        }
+        Err(anyhow!("IF should be followed by ENDIF"))
+    }
+
+    // statement ::= WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
+    fn statement_while<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        println!("STATEMENT: WHILE");
+
+        self.comparison(tokens)?;
+
+        match tokens.next() {
+            Some(Token::REPEAT) => println!("STATEMENT: REPEAT"),
+            val => return Err(anyhow!("WHILE should be followed by REPEAT, got {:?}", val)),
+        }
+
+        self.nl(tokens)?;
+
+        while let Some(token) = tokens.peek() {
+            match token {
+                Token::ENDWHILE => {
+                    println!("STATEMENT: ENDWHILE");
+                    tokens.next();
+                    self.nl(tokens)?;
+                    return Ok(());
+                }
+                _ => self.statement(tokens)?,
+            }
+        }
+        Err(anyhow!("WHILE should be followed by ENDWHILE",))
+    }
+
+    // statement ::= LABEL var nl
+    fn statement_label<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        println!("STATEMENT: LABEL");
+        self.var(tokens)?;
+        self.nl(tokens)?;
+        Ok(())
+    }
+
+    // statement ::= GOTO var nl
+    fn statement_goto<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        println!("STATEMENT: GOTO");
+        self.var(tokens)?;
+        self.nl(tokens)?;
+        Ok(())
+    }
+
+    // statement ::= LET var "=" expression nl
+    fn statement_let<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        println!("STATEMENT: LET");
+        self.var(tokens)?;
+
+        match tokens.next() {
+            Some(Token::EQ) => println!("STATEMENT: EQ"),
+            val => return Err(anyhow!("LET should be followed by '=', got {:?}", val)),
+        }
+
+        self.expression(tokens)?;
+        self.nl(tokens)?;
+        Ok(())
+    }
+
+    // statement ::= INPUT var nl
+    fn statement_input<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        println!("STATEMENT: INPUT");
+        self.var(tokens)?;
+        self.nl(tokens)?;
         Ok(())
     }
 
@@ -277,7 +320,7 @@ impl Parser {
         Ok(())
     }
 
-    // primary ::= number | ident
+    // primary ::= number | var
     fn primary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = &'a Token>,
@@ -285,7 +328,7 @@ impl Parser {
         match tokens.next() {
             Some(Token::INTEGER(value)) => println!("PRIMARY ({value})"),
             Some(Token::FLOAT(value)) => println!("PRIMARY ({value})"),
-            Some(Token::VARIABLE(value)) => println!("IDENT ({value})"),
+            Some(Token::VARIABLE(value)) => println!("var ({value})"),
             Some(token) => Err(anyhow!("Unexpected token! {token}"))?,
             None => Err(anyhow!("Unexpected token! None"))?,
         }
