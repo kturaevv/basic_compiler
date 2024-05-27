@@ -26,14 +26,7 @@ impl Parser {
         Ok(())
     }
 
-    // statement ::= PRINT (expression | string) nl
-    //               IF comparison "THEN" nl {statement} "ENDIF" nl
-    //               WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
-    //               LABEL ident nl
-    //               GOTO ident nl
-    //               LET ident "=" expression nl
-    //               INPUT ident nl
-    fn match_variable<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn var<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = &'a Token>,
     {
@@ -56,6 +49,13 @@ impl Parser {
         Ok(())
     }
 
+    // statement ::= PRINT (expression | string) nl
+    //               IF comparison "THEN" nl {statement} "ENDIF" nl
+    //               WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
+    //               LABEL ident nl
+    //               GOTO ident nl
+    //               LET ident "=" expression nl
+    //               INPUT ident nl
     fn statement<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = &'a Token>,
@@ -73,6 +73,7 @@ impl Parser {
                     }
                     _ => self.expression(tokens)?,
                 }
+                self.nl(tokens)?;
             }
             Some(Token::IF) => {
                 println!("STATEMENT: IF");
@@ -85,12 +86,19 @@ impl Parser {
                 }
 
                 self.nl(tokens)?;
-                self.statement(tokens)?;
 
-                match tokens.next() {
-                    Some(Token::ENDIF) => println!("STATEMENT: ENDIF"),
-                    val => return Err(anyhow!("IF should be followed by ENDIF: Actual {:?}", val)),
+                while let Some(token) = tokens.peek() {
+                    match token {
+                        Token::ENDIF => {
+                            println!("STATEMENT: ENDIF");
+                            tokens.next();
+                            self.nl(tokens)?;
+                            return Ok(());
+                        }
+                        _ => self.statement(tokens)?,
+                    }
                 }
+                return Err(anyhow!("IF should be followed by ENDIF"));
             }
             Some(Token::WHILE) => {
                 println!("STATEMENT: WHILE");
@@ -105,29 +113,33 @@ impl Parser {
                 }
 
                 self.nl(tokens)?;
-                self.statement(tokens)?;
 
-                match tokens.next() {
-                    Some(Token::ENDWHILE) => println!("STATEMENT: ENDWHILE"),
-                    val => {
-                        return Err(anyhow!(
-                            "WHILE should be followed by ENDWHILE, got {:?}",
-                            val
-                        ))
+                while let Some(token) = tokens.peek() {
+                    match token {
+                        Token::ENDWHILE => {
+                            println!("STATEMENT: ENDWHILE");
+                            tokens.next();
+                            self.nl(tokens)?;
+                            return Ok(());
+                        }
+                        _ => self.statement(tokens)?,
                     }
                 }
+                return Err(anyhow!("WHILE should be followed by ENDWHILE",));
             }
             Some(Token::LABEL) => {
                 println!("STATEMENT: LABEL");
-                self.match_variable(tokens)?;
+                self.var(tokens)?;
+                self.nl(tokens)?;
             }
             Some(Token::GOTO) => {
                 println!("STATEMENT: GOTO");
-                self.match_variable(tokens)?;
+                self.var(tokens)?;
+                self.nl(tokens)?;
             }
             Some(Token::LET) => {
                 println!("STATEMENT: LET");
-                self.match_variable(tokens)?;
+                self.var(tokens)?;
 
                 match tokens.next() {
                     Some(Token::EQ) => println!("STATEMENT: EQ"),
@@ -135,15 +147,16 @@ impl Parser {
                 }
 
                 self.expression(tokens)?;
+                self.nl(tokens)?;
             }
             Some(Token::INPUT) => {
                 println!("STATEMENT: INPUT");
-                self.match_variable(tokens)?;
+                self.var(tokens)?;
+                self.nl(tokens)?;
             }
             Some(token) => Err(anyhow!("Invalid statement at: {token}"))?,
             None => panic!("None encountered!!!"),
         }
-        self.nl(tokens)?;
         Ok(())
     }
 
