@@ -10,6 +10,41 @@ pub struct Parser {
     labels_gotoed: HashSet<String>,
 }
 
+#[derive(Default)]
+pub struct Emitter {
+    full_path: String,
+    header: String,
+    code: String,
+}
+
+impl Emitter {
+    pub fn new(full_path: &str) -> Emitter {
+        Emitter {
+            full_path: full_path.to_string(),
+            ..Default::default()
+        }
+    }
+
+    pub fn emit(&mut self, code: &str) {
+        self.code.push_str(code);
+    }
+
+    pub fn emit_line(&mut self, code: &str) {
+        self.emit(code);
+        self.code.push('\n');
+    }
+
+    pub fn emit_header(&mut self, header: &str) {
+        self.header.push_str(header);
+        self.header.push('\n');
+    }
+
+    pub fn write_to_file(&self) {
+        let content = [self.header.as_bytes(), self.code.as_bytes()].concat();
+        std::fs::write(self.full_path.as_str(), content).expect("Couldnt write to file");
+    }
+}
+
 impl Parser {
     pub fn new() -> Parser {
         Parser {
@@ -18,12 +53,18 @@ impl Parser {
     }
 
     // program ::= {statement}
-    pub fn check(&mut self, lexer: &Lexer) -> Result<()> {
+    pub fn check(&mut self, lexer: &Lexer, emitter: &mut Emitter) -> Result<()> {
+        emitter.emit_header("#include <stdio.h>");
+        emitter.emit_header("int main(void){");
+
         let mut tokens = lexer.tokens.iter().peekable();
 
         while tokens.peek().is_some() {
             self.statement(&mut tokens)?;
         }
+
+        emitter.emit_line("return 0;");
+        emitter.emit_line("}");
 
         for label in &self.labels_gotoed {
             if self.labels_declared.contains(label) {

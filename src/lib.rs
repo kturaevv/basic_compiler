@@ -5,7 +5,7 @@ use std::fs;
 
 use anyhow::Result;
 use lexer::Lexer;
-use parser::Parser;
+use parser::{Emitter, Parser};
 
 pub struct Config {
     pub file_path: String,
@@ -30,8 +30,12 @@ pub fn run(config: Config) -> Result<()> {
     let mut lexer = Lexer::new();
     lexer.parse(contents.as_str())?;
 
+    let mut emitter = Emitter::new("./out.c");
+
     let mut parser = Parser::new();
-    parser.check(&lexer)?;
+    parser.check(&lexer, &mut emitter)?;
+
+    emitter.write_to_file();
 
     Ok(())
 }
