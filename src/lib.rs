@@ -1,11 +1,11 @@
+pub mod emitter;
 pub mod lexer;
 pub mod parser;
 
-use std::fs;
-
 use anyhow::Result;
+use emitter::Emitter;
 use lexer::Lexer;
-use parser::{Emitter, Parser};
+use parser::Parser;
 
 pub struct Config {
     pub file_path: String,
@@ -25,16 +25,16 @@ impl Config {
 }
 
 pub fn run(config: Config) -> Result<()> {
-    let contents = fs::read_to_string(config.file_path)?;
+    let contents = std::fs::read_to_string(config.file_path)?;
 
     let mut lexer = Lexer::new();
     lexer.parse(contents.as_str())?;
 
-    let mut emitter = Emitter::new("./out.c");
-
     let mut parser = Parser::new();
-    parser.check(&lexer, &mut emitter)?;
+    parser.check(&lexer)?;
 
+    let mut emitter = Emitter::new("./out.c");
+    emitter.process(parser.ast);
     emitter.write_to_file();
 
     Ok(())

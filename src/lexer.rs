@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use std::{iter::Peekable, str::Chars};
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     EOF,
     NEWLINE,

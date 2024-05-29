@@ -5,44 +5,10 @@ use std::iter::Peekable;
 
 #[derive(Default)]
 pub struct Parser {
+    pub ast: Vec<Token>,
     variables: HashSet<String>,
     labels_declared: HashSet<String>,
     labels_gotoed: HashSet<String>,
-}
-
-#[derive(Default)]
-pub struct Emitter {
-    full_path: String,
-    header: String,
-    code: String,
-}
-
-impl Emitter {
-    pub fn new(full_path: &str) -> Emitter {
-        Emitter {
-            full_path: full_path.to_string(),
-            ..Default::default()
-        }
-    }
-
-    pub fn emit(&mut self, code: &str) {
-        self.code.push_str(code);
-    }
-
-    pub fn emit_line(&mut self, code: &str) {
-        self.emit(code);
-        self.code.push('\n');
-    }
-
-    pub fn emit_header(&mut self, header: &str) {
-        self.header.push_str(header);
-        self.header.push('\n');
-    }
-
-    pub fn write_to_file(&self) {
-        let content = [self.header.as_bytes(), self.code.as_bytes()].concat();
-        std::fs::write(self.full_path.as_str(), content).expect("Couldnt write to file");
-    }
 }
 
 impl Parser {
@@ -53,18 +19,12 @@ impl Parser {
     }
 
     // program ::= {statement}
-    pub fn check(&mut self, lexer: &Lexer, emitter: &mut Emitter) -> Result<()> {
-        emitter.emit_header("#include <stdio.h>");
-        emitter.emit_header("int main(void){");
-
+    pub fn check(&mut self, lexer: &Lexer) -> Result<()> {
         let mut tokens = lexer.tokens.iter().peekable();
 
         while tokens.peek().is_some() {
             self.statement(&mut tokens)?;
         }
-
-        emitter.emit_line("return 0;");
-        emitter.emit_line("}");
 
         for label in &self.labels_gotoed {
             if self.labels_declared.contains(label) {
@@ -86,7 +46,7 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::NEWLINE) => println!("NEWLINE"),
+            Some(Token::NEWLINE) => (),
             Some(Token::PRINT) => self.statement_print(tokens)?,
             Some(Token::IF) => self.statement_if(tokens)?,
             Some(Token::WHILE) => self.statement_while(tokens)?,
@@ -105,9 +65,9 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::VARIABLE(value)) => {
-                println!("VAR ({value})");
-                Ok(value.clone())
+            Some(value @ Token::VARIABLE(content)) => {
+                self.ast.push(value.clone());
+                Ok(content.clone())
             }
             _ => Err(anyhow!("Invalid variable!"))?,
         }
@@ -118,7 +78,7 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::NEWLINE) => (),
+            Some(Token::NEWLINE) => self.ast.push(Token::NEWLINE),
             val => Err(anyhow!("Should be followed by NEWLINE: {:?}", val))?,
         }
         Ok(())
@@ -129,11 +89,11 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: PRINT");
+        self.ast.push(Token::PRINT);
+
         match tokens.peek() {
-            Some(Token::STRING(value)) => {
-                println!("STRING: {value}");
-                tokens.next();
+            Some(Token::STRING(_)) => {
+                self.ast.push(tokens.next().unwrap().clone());
             }
             _ => self.expression(tokens)?,
         }
@@ -146,12 +106,12 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: IF");
+        self.ast.push(Token::IF);
 
         self.comparison(tokens)?;
 
         match tokens.next() {
-            Some(Token::THEN) => println!("STATEMENT: THEN"),
+            Some(Token::THEN) => self.ast.push(Token::THEN),
             val => return Err(anyhow!("IF should be followed by THEN, got {:?}", val)),
         }
 
@@ -160,8 +120,7 @@ impl Parser {
         while let Some(token) = tokens.peek() {
             match token {
                 Token::ENDIF => {
-                    println!("STATEMENT: ENDIF");
-                    tokens.next();
+                    self.ast.push(tokens.next().unwrap().clone());
                     self.nl(tokens)?;
                     return Ok(());
                 }
@@ -176,12 +135,12 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: WHILE");
+        self.ast.push(Token::WHILE);
 
         self.comparison(tokens)?;
 
         match tokens.next() {
-            Some(Token::REPEAT) => println!("STATEMENT: REPEAT"),
+            Some(Token::REPEAT) => self.ast.push(Token::REPEAT),
             val => return Err(anyhow!("WHILE should be followed by REPEAT, got {:?}", val)),
         }
 
@@ -190,8 +149,7 @@ impl Parser {
         while let Some(token) = tokens.peek() {
             match token {
                 Token::ENDWHILE => {
-                    println!("STATEMENT: ENDWHILE");
-                    tokens.next();
+                    self.ast.push(tokens.next().unwrap().clone());
                     self.nl(tokens)?;
                     return Ok(());
                 }
@@ -206,7 +164,8 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: LABEL");
+        self.ast.push(Token::LABEL);
+
         let var = self.var(tokens)?;
 
         if !self.labels_declared.insert(var.clone()) {
@@ -222,7 +181,7 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: GOTO");
+        self.ast.push(Token::GOTO);
 
         let var = self.var(tokens)?;
 
@@ -238,14 +197,14 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: LET");
+        self.ast.push(Token::LET);
 
         let var = self.var(tokens)?;
 
         self.variables.insert(var);
 
         match tokens.next() {
-            Some(Token::EQ) => println!("STATEMENT: EQ"),
+            Some(value @ Token::EQ) => self.ast.push(value.clone()),
             val => return Err(anyhow!("LET should be followed by '=', got {:?}", val)),
         }
 
@@ -259,7 +218,8 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("STATEMENT: INPUT");
+        self.ast.push(Token::INPUT);
+
         let var = self.var(tokens)?;
 
         self.variables.insert(var);
@@ -268,25 +228,18 @@ impl Parser {
         Ok(())
     }
 
-    fn is_comparison<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn is_comparison<'a, I>(&mut self, tokens: &mut Peekable<I>) -> bool
     where
         I: Iterator<Item = &'a Token>,
     {
-        match tokens.next() {
-            Some(Token::EQ) => (),
-            Some(Token::PLUS) => (),
-            Some(Token::MINUS) => (),
-            Some(Token::ASTERISK) => (),
-            Some(Token::SLASH) => (),
-            Some(Token::EQEQ) => (),
-            Some(Token::NOTEQ) => (),
-            Some(Token::LT) => (),
-            Some(Token::LTEQ) => (),
-            Some(Token::GT) => (),
-            Some(Token::GTEQ) => (),
-            _ => Err(anyhow!("Expected comparison!"))?,
+        match tokens.peek() {
+            Some(Token::EQEQ) | Some(Token::NOTEQ) | Some(Token::LT) | Some(Token::LTEQ)
+            | Some(Token::GT) | Some(Token::GTEQ) => {
+                self.ast.push(tokens.next().unwrap().clone());
+                true
+            }
+            _ => false,
         }
-        Ok(())
     }
 
     // comparison ::= expression (("==" | "!=" | ">" | ">=" | "<" | "<=") expression)+
@@ -295,11 +248,10 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         self.expression(tokens)?;
+        self.is_comparison(tokens);
+        self.expression(tokens)?;
 
-        println!("COMPARISON");
-        self.is_comparison(tokens)?;
-
-        while self.is_comparison(tokens).is_ok() {
+        while self.is_comparison(tokens) {
             self.expression(tokens)?;
         }
         Ok(())
@@ -310,20 +262,12 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("EXPRESSION");
-
         self.term(tokens)?;
 
         while let Some(token) = tokens.peek() {
             match token {
-                Token::PLUS => {
-                    println!("UNARY PLUS");
-                    tokens.next();
-                    self.term(tokens)?;
-                }
-                Token::MINUS => {
-                    println!("UNARY MINUS");
-                    tokens.next();
+                Token::PLUS | Token::MINUS => {
+                    self.ast.push(tokens.next().unwrap().clone());
                     self.term(tokens)?;
                 }
                 _ => break,
@@ -338,20 +282,12 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("TERM");
-
         self.unary(tokens)?;
 
         while let Some(token) = tokens.peek() {
             match token {
-                Token::SLASH => {
-                    println!("TERM SLASH");
-                    tokens.next();
-                    self.unary(tokens)?;
-                }
-                Token::ASTERISK => {
-                    println!("TERM ASTERISK");
-                    tokens.next();
+                Token::SLASH | Token::ASTERISK => {
+                    self.ast.push(tokens.next().unwrap().clone());
                     self.unary(tokens)?;
                 }
                 _ => break,
@@ -366,17 +302,10 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        println!("UNARY");
-
         // optional unary
         match tokens.peek() {
-            Some(Token::PLUS) => {
-                tokens.next();
-                println!("UNARY PLUS")
-            }
-            Some(Token::MINUS) => {
-                tokens.next();
-                println!("UNARY MINUS");
+            Some(Token::PLUS) | Some(Token::MINUS) => {
+                self.ast.push(tokens.next().unwrap().clone());
             }
             _ => (),
         }
@@ -391,13 +320,14 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::INTEGER(value)) => println!("PRIMARY ({value})"),
-            Some(Token::FLOAT(value)) => println!("PRIMARY ({value})"),
-            Some(Token::VARIABLE(value)) => {
-                if !self.variables.contains(value) {
+            Some(value @ Token::INTEGER(_)) | Some(value @ Token::FLOAT(_)) => {
+                self.ast.push(value.clone())
+            }
+            Some(value @ Token::VARIABLE(name)) => {
+                self.ast.push(value.clone());
+                if !self.variables.contains(name) {
                     Err(anyhow!("Variable referenced before assignment!"))?
                 }
-                println!("var ({value})");
             }
             Some(token) => Err(anyhow!("Unexpected token! {token}"))?,
             None => Err(anyhow!("Unexpected token! None"))?,
