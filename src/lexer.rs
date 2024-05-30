@@ -83,22 +83,16 @@ impl Lexer {
         let mut contents = contents.chars().peekable();
 
         while let Some(cur_char) = contents.next() {
-            let mut current_token = String::new();
-
             match cur_char {
                 '\n' | '\r' => self.tokens.push(Token::NEWLINE),
                 '#' => self.skip_comments(&mut contents),
-                '"' => self.read_string(&mut contents, &mut current_token),
+                '"' => self.read_string(&mut contents),
                 '=' | '+' | '-' | '*' | '/' | '<' | '>' | '!' => {
-                    self.read_short_keyword(&mut contents, &mut current_token, &cur_char)
+                    self.read_short_keyword(&mut contents, &cur_char)
                 }
                 _ if cur_char.is_whitespace() => continue,
-                _ if cur_char.is_alphabetic() => {
-                    self.read_keyword(&mut contents, &mut current_token, &cur_char)
-                }
-                _ if cur_char.is_numeric() => {
-                    self.read_number(&mut contents, &mut current_token, &cur_char)
-                }
+                _ if cur_char.is_alphabetic() => self.read_keyword(&mut contents, &cur_char),
+                _ if cur_char.is_numeric() => self.read_number(&mut contents, &cur_char),
                 _ => Err(anyhow!("Unknown token: {}", cur_char))?,
             }
         }
@@ -106,13 +100,9 @@ impl Lexer {
         Ok(())
     }
 
-    fn is_keyword(&self, character: &char) -> bool {
-        Token::from_str(character.to_string().as_str()).is_some()
-    }
-
     fn next_is_keyword(&self, contents: &mut Peekable<Chars>) -> bool {
         if let Some(next_char) = contents.peek() {
-            return self.is_keyword(next_char);
+            return Token::from_str(next_char.to_string().as_str()).is_some();
         }
         false
     }
@@ -121,20 +111,13 @@ impl Lexer {
         contents.find(|&ch| ch == '\n');
     }
 
-    fn read_short_keyword(
-        &mut self,
-        contents: &mut Peekable<Chars>,
-        token: &mut String,
-        current_character: &char,
-    ) {
-        if token.is_empty() {
-            token.push(*current_character)
-        }
+    fn read_short_keyword(&mut self, contents: &mut Peekable<Chars>, current_character: &char) {
+        let mut token = String::from(*current_character);
 
         // Handle 2-char tokens
         if let Some(next_char) = contents.peek() {
             token.push(*next_char);
-            if let Some(multi_char_token) = Token::from_str(token) {
+            if let Some(multi_char_token) = Token::from_str(&token) {
                 self.tokens.push(multi_char_token);
                 contents.next(); // Consume the peeked character
                 return;
@@ -144,18 +127,13 @@ impl Lexer {
         }
 
         // Handle 1-char token
-        if let Some(single_char_token) = Token::from_str(token) {
+        if let Some(single_char_token) = Token::from_str(&token) {
             self.tokens.push(single_char_token);
         }
     }
 
-    fn read_keyword(
-        &mut self,
-        contents: &mut Peekable<Chars>,
-        token: &mut String,
-        current_character: &char,
-    ) {
-        token.push(*current_character);
+    fn read_keyword(&mut self, contents: &mut Peekable<Chars>, current_character: &char) {
+        let mut token = String::from(*current_character);
 
         while let Some(&current_character) = contents.peek() {
             if current_character.is_whitespace() {
@@ -176,14 +154,8 @@ impl Lexer {
         }
     }
 
-    fn read_number(
-        &mut self,
-        contents: &mut Peekable<Chars>,
-        token: &mut String,
-        current_character: &char,
-    ) {
-        token.push(*current_character);
-
+    fn read_number(&mut self, contents: &mut Peekable<Chars>, current_character: &char) {
+        let mut token = String::from(*current_character);
         let mut is_float = false;
 
         while let Some(&current_character) = contents.peek() {
@@ -216,9 +188,10 @@ impl Lexer {
         }
     }
 
-    fn read_string(&mut self, contents: &mut Peekable<Chars>, token: &mut String) {
+    fn read_string(&mut self, contents: &mut Peekable<Chars>) {
+        let mut token = String::new();
         token.extend(contents.take_while(|&c| c != '"'));
-        self.tokens.push(Token::STRING(token.clone()));
+        self.tokens.push(Token::STRING(token));
     }
 }
 
