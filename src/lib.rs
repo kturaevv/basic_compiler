@@ -1,3 +1,4 @@
+pub mod ast;
 pub mod emitter;
 pub mod lexer;
 pub mod parser;
@@ -32,10 +33,6 @@ pub fn run(config: Config) -> Result<()> {
 
     let mut parser = Parser::new();
     parser.check(&lexer)?;
-
-    let mut emitter = Emitter::new("./out.c");
-    emitter.process(parser.ast);
-    emitter.write_to_file();
 
     Ok(())
 }

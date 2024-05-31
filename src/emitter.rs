@@ -19,9 +19,7 @@ impl Emitter {
         self.emit_header("#include <stdio.h>");
         self.emit_header("int main(void){");
 
-        for i in ast {
-            println!("{:?}", i);
-        }
+        ast.iter().for_each(|token| println!("{:?}", token));
 
         self.emit_line("return 0;");
         self.emit_line("}");
