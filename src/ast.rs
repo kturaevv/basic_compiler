@@ -21,25 +21,19 @@
 // unary ::= ["+" | "-"] primary
 // primary ::= number | var
 
-// term -> +-primary {*/ +-primary}
-
-use crate::lexer::Token;
-
 #[derive(Default)]
 pub struct Ast {
     pub program: Vec<Statement>,
-    line: Option<Vec<Token>>,
-    tokens: Vec<Vec<Token>>,
 }
 
 pub enum Statement {
     Print(Print),
-    Let(Var, Expression),
+    Let(String, Expression),
     If(Comparison, Box<Statement>),
     While(Comparison, Box<Statement>),
-    Label(Var),
-    Goto(Var),
-    Input(Var),
+    Label(String),
+    Goto(String),
+    Input(String),
 }
 
 pub enum Print {
@@ -47,33 +41,36 @@ pub enum Print {
     String,
 }
 
-pub enum Expression {
-    Primary,
-    BinaryOp,
-}
-
 pub enum Comparison {
     Expression,
-    CompareOp(Box<Comparison>),
+    CompareOp(CompareOp, Box<Comparison>),
 }
 
 pub enum CompareOp {
     String,
 }
 
-pub enum BinaryOp {
+pub enum Expression {
+    Term(Term),
     Add(Box<Expression>),
-    Sub(Box<Expression>),
-    Mul(Box<Expression>),
-    Div(Box<Expression>),
+    Neg(Box<Expression>),
+}
+
+pub enum Term {
+    Unary(Unary),
+    Mul(Box<Term>),
+    Div(Box<Term>),
+}
+
+pub enum Unary {
+    Primary(Primary),
+    Positive(Box<Unary>),
+    Negative(Box<Unary>),
 }
 
 pub enum Primary {
     Integer(i64),
     Float(f64),
-    Var,
-}
-
-pub enum Var {
-    String,
+    Number(usize),
+    Variable(String),
 }

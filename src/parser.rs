@@ -1,7 +1,9 @@
+use crate::ast;
 use crate::lexer::{Lexer, Token};
 use anyhow::{anyhow, Ok, Result};
 use std::collections::HashSet;
 use std::iter::Peekable;
+use std::ops::Mul;
 
 #[derive(Default)]
 pub struct Parser {
@@ -278,60 +280,52 @@ impl Parser {
     }
 
     // term ::= unary {( "/" | "*" ) unary}
-    fn term<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn term<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Term>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.unary(tokens)?;
+        let unary = self.unary(tokens)?;
 
-        while let Some(token) = tokens.peek() {
+        if let Some(token) = tokens.peek() {
             match token {
-                Token::SLASH | Token::ASTERISK => {
-                    self.ast.push(tokens.next().unwrap().clone());
-                    self.unary(tokens)?;
-                }
-                _ => break,
+                Token::ASTERISK => Ok(ast::Term::Mul(Box::new(self.term(tokens)?))),
+                Token::SLASH => Ok(ast::Term::Div(Box::new(self.term(tokens)?))),
+                _ => Ok(ast::Term::Unary(unary)),
             }
+        } else {
+            Ok(ast::Term::Unary(unary))
         }
-
-        Ok(())
     }
 
     // unary ::= ["+" | "-"] primary
-    fn unary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn unary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Unary>
     where
         I: Iterator<Item = &'a Token>,
     {
         // optional unary
-        match tokens.peek() {
-            Some(Token::PLUS) | Some(Token::MINUS) => {
-                self.ast.push(tokens.next().unwrap().clone());
-            }
-            _ => (),
-        }
-
-        self.primary(tokens)?;
-        Ok(())
+        return match tokens.peek() {
+            Some(Token::PLUS) => Ok(ast::Unary::Positive(Box::new(self.unary(tokens)?))),
+            Some(Token::MINUS) => Ok(ast::Unary::Negative(Box::new(self.unary(tokens)?))),
+            _ => Ok(ast::Unary::Primary(self.primary(tokens)?)),
+        };
     }
 
     // primary ::= number | var
-    fn primary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn primary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Primary>
     where
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(value @ Token::INTEGER(_)) | Some(value @ Token::FLOAT(_)) => {
-                self.ast.push(value.clone())
-            }
-            Some(value @ Token::VARIABLE(name)) => {
-                self.ast.push(value.clone());
-                if !self.variables.contains(name) {
+            Some(Token::INTEGER(val)) => Ok(ast::Primary::Integer(*val)),
+            Some(Token::FLOAT(val)) => Ok(ast::Primary::Float(*val)),
+            Some(Token::VARIABLE(val)) => {
+                if !self.variables.contains(val) {
                     Err(anyhow!("Variable referenced before assignment!"))?
                 }
+                Ok(ast::Primary::Variable(val.clone()))
             }
             Some(token) => Err(anyhow!("Unexpected token! {token}"))?,
             None => Err(anyhow!("Unexpected token! None"))?,
         }
-        Ok(())
     }
 }
