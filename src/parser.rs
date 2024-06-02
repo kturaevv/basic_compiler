@@ -3,11 +3,10 @@ use crate::lexer::{Lexer, Token};
 use anyhow::{anyhow, Ok, Result};
 use std::collections::HashSet;
 use std::iter::Peekable;
-use std::ops::Mul;
 
 #[derive(Default)]
 pub struct Parser {
-    pub ast: Vec<Token>,
+    pub ast: ast::Ast,
     variables: HashSet<String>,
     labels_declared: HashSet<String>,
     labels_gotoed: HashSet<String>,
@@ -25,7 +24,8 @@ impl Parser {
         let mut tokens = lexer.tokens.iter().peekable();
 
         while tokens.peek().is_some() {
-            self.statement(&mut tokens)?;
+            let statement = self.statement(&mut tokens)?;
+            self.ast.program.push(statement);
         }
 
         for label in &self.labels_gotoed {
@@ -33,6 +33,7 @@ impl Parser {
                 return Err(anyhow!("Attemt to GOTO to undeclared label! {label}"));
             }
         }
+
         Ok(())
     }
 
@@ -43,23 +44,22 @@ impl Parser {
     //               GOTO var nl
     //               LET var "=" expression nl
     //               INPUT var nl
-    fn statement<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::NEWLINE) => (),
-            Some(Token::PRINT) => self.statement_print(tokens)?,
-            Some(Token::IF) => self.statement_if(tokens)?,
-            Some(Token::WHILE) => self.statement_while(tokens)?,
-            Some(Token::LABEL) => self.statement_label(tokens)?,
-            Some(Token::GOTO) => self.statement_goto(tokens)?,
-            Some(Token::LET) => self.statement_let(tokens)?,
-            Some(Token::INPUT) => self.statement_input(tokens)?,
+            Some(Token::NEWLINE) => Ok(self.statement(tokens)?),
+            Some(Token::PRINT) => Ok(self.statement_print(tokens)?),
+            Some(Token::IF) => Ok(self.statement_if(tokens)?),
+            Some(Token::WHILE) => Ok(self.statement_while(tokens)?),
+            Some(Token::LABEL) => Ok(self.statement_label(tokens)?),
+            Some(Token::GOTO) => Ok(self.statement_goto(tokens)?),
+            Some(Token::LET) => Ok(self.statement_let(tokens)?),
+            Some(Token::INPUT) => Ok(self.statement_input(tokens)?),
             Some(token) => Err(anyhow!("Invalid statement at: {token}"))?,
             None => panic!("None encountered!!!"),
         }
-        Ok(())
     }
 
     fn var<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<String>
@@ -67,10 +67,7 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(value @ Token::VARIABLE(content)) => {
-                self.ast.push(value.clone());
-                Ok(content.clone())
-            }
+            Some(Token::VARIABLE(content)) => Ok(content.clone()),
             _ => Err(anyhow!("Invalid variable!"))?,
         }
     }
@@ -80,94 +77,83 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         match tokens.next() {
-            Some(Token::NEWLINE) => self.ast.push(Token::NEWLINE),
+            Some(Token::NEWLINE) => Ok(()),
             val => Err(anyhow!("Should be followed by NEWLINE: {:?}", val))?,
         }
-        Ok(())
     }
 
     // statement ::= PRINT (expression | string) nl
-    fn statement_print<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_print<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::PRINT);
+        let return_value = match tokens.peek() {
+            Some(Token::STRING(value)) => Ok(ast::Statement::PrintStr(value.clone())),
+            _ => Ok(ast::Statement::Print(self.expression(tokens)?)),
+        };
 
-        match tokens.peek() {
-            Some(Token::STRING(_)) => {
-                self.ast.push(tokens.next().unwrap().clone());
-            }
-            _ => self.expression(tokens)?,
-        }
         self.nl(tokens)?;
-        Ok(())
+
+        return_value
     }
 
     // statement ::= IF comparison "THEN" nl {statement} "ENDIF" nl
-    fn statement_if<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_if<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::IF);
-
-        self.comparison(tokens)?;
+        let comparison = self.comparison(tokens)?;
 
         match tokens.next() {
-            Some(Token::THEN) => self.ast.push(Token::THEN),
+            Some(Token::THEN) => (),
             val => return Err(anyhow!("IF should be followed by THEN, got {:?}", val)),
         }
 
         self.nl(tokens)?;
 
-        while let Some(token) = tokens.peek() {
-            match token {
-                Token::ENDIF => {
-                    self.ast.push(tokens.next().unwrap().clone());
-                    self.nl(tokens)?;
-                    return Ok(());
-                }
-                _ => self.statement(tokens)?,
+        let statement = Box::new(self.statement(tokens)?);
+
+        match tokens.next() {
+            Some(Token::ENDIF) => {
+                tokens.next();
+                self.nl(tokens)?;
+                Ok(ast::Statement::If(comparison, statement))
             }
+            _ => Err(anyhow!("IF should be followed by ENDIF")),
         }
-        Err(anyhow!("IF should be followed by ENDIF"))
     }
 
     // statement ::= WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
-    fn statement_while<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_while<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::WHILE);
-
-        self.comparison(tokens)?;
+        let comparison = self.comparison(tokens)?;
 
         match tokens.next() {
-            Some(Token::REPEAT) => self.ast.push(Token::REPEAT),
+            Some(Token::REPEAT) => (),
             val => return Err(anyhow!("WHILE should be followed by REPEAT, got {:?}", val)),
         }
 
         self.nl(tokens)?;
 
-        while let Some(token) = tokens.peek() {
-            match token {
-                Token::ENDWHILE => {
-                    self.ast.push(tokens.next().unwrap().clone());
-                    self.nl(tokens)?;
-                    return Ok(());
-                }
-                _ => self.statement(tokens)?,
+        let statement = Box::new(self.statement(tokens)?);
+
+        match tokens.next() {
+            Some(Token::ENDWHILE) => {
+                tokens.next();
+                self.nl(tokens)?;
+                Ok(ast::Statement::While(comparison, statement))
             }
+            _ => Err(anyhow!("WHILE should be followed by ENDWHILE",)),
         }
-        Err(anyhow!("WHILE should be followed by ENDWHILE",))
     }
 
     // statement ::= LABEL var nl
-    fn statement_label<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_label<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::LABEL);
-
         let var = self.var(tokens)?;
 
         if !self.labels_declared.insert(var.clone()) {
@@ -175,108 +161,104 @@ impl Parser {
         }
 
         self.nl(tokens)?;
-        Ok(())
+        Ok(ast::Statement::Label(var))
     }
 
     // statement ::= GOTO var nl
-    fn statement_goto<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_goto<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::GOTO);
-
         let var = self.var(tokens)?;
 
         self.labels_gotoed.insert(var.clone());
 
         self.nl(tokens)?;
 
-        Ok(())
+        Ok(ast::Statement::Goto(var))
     }
 
     // statement ::= LET var "=" expression nl
-    fn statement_let<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_let<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::LET);
-
         let var = self.var(tokens)?;
 
-        self.variables.insert(var);
+        self.variables.insert(var.clone());
 
-        match tokens.next() {
-            Some(value @ Token::EQ) => self.ast.push(value.clone()),
+        let result = match tokens.next() {
+            Some(Token::EQ) => self.expression(tokens)?,
             val => return Err(anyhow!("LET should be followed by '=', got {:?}", val)),
-        }
+        };
 
-        self.expression(tokens)?;
         self.nl(tokens)?;
-        Ok(())
+
+        Ok(ast::Statement::Let(var, result))
     }
 
     // statement ::= INPUT var nl
-    fn statement_input<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn statement_input<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.ast.push(Token::INPUT);
-
         let var = self.var(tokens)?;
 
-        self.variables.insert(var);
+        self.variables.insert(var.clone());
 
         self.nl(tokens)?;
-        Ok(())
-    }
 
-    fn is_comparison<'a, I>(&mut self, tokens: &mut Peekable<I>) -> bool
-    where
-        I: Iterator<Item = &'a Token>,
-    {
-        match tokens.peek() {
-            Some(Token::EQEQ) | Some(Token::NOTEQ) | Some(Token::LT) | Some(Token::LTEQ)
-            | Some(Token::GT) | Some(Token::GTEQ) => {
-                self.ast.push(tokens.next().unwrap().clone());
-                true
-            }
-            _ => false,
-        }
+        Ok(ast::Statement::Input(var))
     }
 
     // comparison ::= expression (("==" | "!=" | ">" | ">=" | "<" | "<=") expression)+
-    fn comparison<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn comparison<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Comparison>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.expression(tokens)?;
-        self.is_comparison(tokens);
-        self.expression(tokens)?;
+        let left_expr = self.expression(tokens)?;
 
-        while self.is_comparison(tokens) {
-            self.expression(tokens)?;
+        match tokens.next() {
+            Some(Token::EQEQ) => Ok(ast::Comparison::Compare(
+                "==".to_string(),
+                Box::new(self.comparison(tokens)?),
+            )),
+            Some(Token::NOTEQ) => Ok(ast::Comparison::Compare(
+                "!=".to_string(),
+                Box::new(self.comparison(tokens)?),
+            )),
+            Some(Token::LT) => Ok(ast::Comparison::Compare(
+                "<".to_string(),
+                Box::new(self.comparison(tokens)?),
+            )),
+            Some(Token::LTEQ) => Ok(ast::Comparison::Compare(
+                "<=".to_string(),
+                Box::new(self.comparison(tokens)?),
+            )),
+            Some(Token::GT) => Ok(ast::Comparison::Compare(
+                ">".to_string(),
+                Box::new(self.comparison(tokens)?),
+            )),
+            Some(Token::GTEQ) => Ok(ast::Comparison::Compare(
+                ">=".to_string(),
+                Box::new(self.comparison(tokens)?),
+            )),
+            _ => Ok(ast::Comparison::Expression(left_expr)),
         }
-        Ok(())
     }
 
     // expression ::= term {( "-" | "+" ) term}
-    fn expression<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
+    fn expression<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Expression>
     where
         I: Iterator<Item = &'a Token>,
     {
-        self.term(tokens)?;
+        let term = self.term(tokens)?;
 
-        while let Some(token) = tokens.peek() {
-            match token {
-                Token::PLUS | Token::MINUS => {
-                    self.ast.push(tokens.next().unwrap().clone());
-                    self.term(tokens)?;
-                }
-                _ => break,
-            }
+        match tokens.peek() {
+            Some(Token::PLUS) => Ok(ast::Expression::Add(Box::new(self.expression(tokens)?))),
+            Some(Token::MINUS) => Ok(ast::Expression::Add(Box::new(self.expression(tokens)?))),
+            _ => Ok(ast::Expression::Term(term)),
         }
-
-        Ok(())
     }
 
     // term ::= unary {( "/" | "*" ) unary}
@@ -286,14 +268,10 @@ impl Parser {
     {
         let unary = self.unary(tokens)?;
 
-        if let Some(token) = tokens.peek() {
-            match token {
-                Token::ASTERISK => Ok(ast::Term::Mul(Box::new(self.term(tokens)?))),
-                Token::SLASH => Ok(ast::Term::Div(Box::new(self.term(tokens)?))),
-                _ => Ok(ast::Term::Unary(unary)),
-            }
-        } else {
-            Ok(ast::Term::Unary(unary))
+        match tokens.peek() {
+            Some(Token::ASTERISK) => Ok(ast::Term::Mul(Box::new(self.term(tokens)?))),
+            Some(Token::SLASH) => Ok(ast::Term::Div(Box::new(self.term(tokens)?))),
+            _ => Ok(ast::Term::Unary(unary)),
         }
     }
 

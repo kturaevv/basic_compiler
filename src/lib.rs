@@ -4,7 +4,6 @@ pub mod lexer;
 pub mod parser;
 
 use anyhow::Result;
-use emitter::Emitter;
 use lexer::Lexer;
 use parser::Parser;
 

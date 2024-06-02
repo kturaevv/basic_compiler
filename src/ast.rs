@@ -27,7 +27,8 @@ pub struct Ast {
 }
 
 pub enum Statement {
-    Print(Print),
+    Print(Expression),
+    PrintStr(String),
     Let(String, Expression),
     If(Comparison, Box<Statement>),
     While(Comparison, Box<Statement>),
@@ -36,18 +37,9 @@ pub enum Statement {
     Input(String),
 }
 
-pub enum Print {
-    Expression,
-    String,
-}
-
 pub enum Comparison {
-    Expression,
-    CompareOp(CompareOp, Box<Comparison>),
-}
-
-pub enum CompareOp {
-    String,
+    Expression(Expression),
+    Compare(String, Box<Comparison>),
 }
 
 pub enum Expression {
