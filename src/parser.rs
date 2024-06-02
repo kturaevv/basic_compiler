@@ -25,6 +25,7 @@ impl Parser {
 
         while tokens.peek().is_some() {
             let statement = self.statement(&mut tokens)?;
+
             self.ast.program.push(statement);
         }
 
@@ -87,7 +88,7 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        let return_value = match tokens.peek() {
+        let return_value = match tokens.next() {
             Some(Token::STRING(value)) => Ok(ast::Statement::PrintStr(value.clone())),
             _ => Ok(ast::Statement::Print(self.expression(tokens)?)),
         };
@@ -145,7 +146,10 @@ impl Parser {
                 self.nl(tokens)?;
                 Ok(ast::Statement::While(comparison, statement))
             }
-            _ => Err(anyhow!("WHILE should be followed by ENDWHILE",)),
+            val => Err(anyhow!(
+                "WHILE should be followed by ENDWHILE, got: {:?}",
+                val
+            )),
         }
     }
 
@@ -218,33 +222,35 @@ impl Parser {
     {
         let left_expr = self.expression(tokens)?;
 
-        match tokens.next() {
-            Some(Token::EQEQ) => Ok(ast::Comparison::Compare(
-                "==".to_string(),
-                Box::new(self.comparison(tokens)?),
-            )),
-            Some(Token::NOTEQ) => Ok(ast::Comparison::Compare(
-                "!=".to_string(),
-                Box::new(self.comparison(tokens)?),
-            )),
-            Some(Token::LT) => Ok(ast::Comparison::Compare(
-                "<".to_string(),
-                Box::new(self.comparison(tokens)?),
-            )),
-            Some(Token::LTEQ) => Ok(ast::Comparison::Compare(
-                "<=".to_string(),
-                Box::new(self.comparison(tokens)?),
-            )),
-            Some(Token::GT) => Ok(ast::Comparison::Compare(
-                ">".to_string(),
-                Box::new(self.comparison(tokens)?),
-            )),
-            Some(Token::GTEQ) => Ok(ast::Comparison::Compare(
-                ">=".to_string(),
-                Box::new(self.comparison(tokens)?),
-            )),
-            _ => Ok(ast::Comparison::Expression(left_expr)),
-        }
+        let right_expr = match tokens.peek() {
+            Some(Token::EQEQ) => {
+                tokens.next();
+                ast::Comparison::Compare("==".to_string(), Box::new(self.comparison(tokens)?))
+            }
+            Some(Token::NOTEQ) => {
+                tokens.next();
+                ast::Comparison::Compare("!=".to_string(), Box::new(self.comparison(tokens)?))
+            }
+            Some(Token::LT) => {
+                tokens.next();
+                ast::Comparison::Compare("<".to_string(), Box::new(self.comparison(tokens)?))
+            }
+            Some(Token::LTEQ) => {
+                tokens.next();
+                ast::Comparison::Compare("<=".to_string(), Box::new(self.comparison(tokens)?))
+            }
+            Some(Token::GT) => {
+                tokens.next();
+                ast::Comparison::Compare(">".to_string(), Box::new(self.comparison(tokens)?))
+            }
+            Some(Token::GTEQ) => {
+                tokens.next();
+                ast::Comparison::Compare(">=".to_string(), Box::new(self.comparison(tokens)?))
+            }
+            _ => return Ok(ast::Comparison::Right(left_expr)),
+        };
+
+        Ok(ast::Comparison::Left(left_expr, Box::new(right_expr)))
     }
 
     // expression ::= term {( "-" | "+" ) term}
@@ -255,8 +261,14 @@ impl Parser {
         let term = self.term(tokens)?;
 
         match tokens.peek() {
-            Some(Token::PLUS) => Ok(ast::Expression::Add(Box::new(self.expression(tokens)?))),
-            Some(Token::MINUS) => Ok(ast::Expression::Add(Box::new(self.expression(tokens)?))),
+            Some(Token::PLUS) => {
+                tokens.next();
+                Ok(ast::Expression::Add(Box::new(self.expression(tokens)?)))
+            }
+            Some(Token::MINUS) => {
+                tokens.next();
+                Ok(ast::Expression::Add(Box::new(self.expression(tokens)?)))
+            }
             _ => Ok(ast::Expression::Term(term)),
         }
     }
@@ -269,8 +281,14 @@ impl Parser {
         let unary = self.unary(tokens)?;
 
         match tokens.peek() {
-            Some(Token::ASTERISK) => Ok(ast::Term::Mul(Box::new(self.term(tokens)?))),
-            Some(Token::SLASH) => Ok(ast::Term::Div(Box::new(self.term(tokens)?))),
+            Some(Token::ASTERISK) => {
+                tokens.next();
+                Ok(ast::Term::Mul(Box::new(self.term(tokens)?)))
+            }
+            Some(Token::SLASH) => {
+                tokens.next();
+                Ok(ast::Term::Div(Box::new(self.term(tokens)?)))
+            }
             _ => Ok(ast::Term::Unary(unary)),
         }
     }
@@ -281,11 +299,17 @@ impl Parser {
         I: Iterator<Item = &'a Token>,
     {
         // optional unary
-        return match tokens.peek() {
-            Some(Token::PLUS) => Ok(ast::Unary::Positive(Box::new(self.unary(tokens)?))),
-            Some(Token::MINUS) => Ok(ast::Unary::Negative(Box::new(self.unary(tokens)?))),
+        match tokens.peek() {
+            Some(Token::PLUS) => {
+                tokens.next();
+                Ok(ast::Unary::Positive(Box::new(self.unary(tokens)?)))
+            }
+            Some(Token::MINUS) => {
+                tokens.next();
+                Ok(ast::Unary::Negative(Box::new(self.unary(tokens)?)))
+            }
             _ => Ok(ast::Unary::Primary(self.primary(tokens)?)),
-        };
+        }
     }
 
     // primary ::= number | var

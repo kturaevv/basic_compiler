@@ -3,7 +3,7 @@ INPUT nums
 PRINT ""
 
 LET a = 0
-LET b = 1 + -3
+LET b = 1
 WHILE nums > 0 REPEAT
     PRINT a
     LET c = a + b

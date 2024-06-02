@@ -26,6 +26,7 @@ pub struct Ast {
     pub program: Vec<Statement>,
 }
 
+#[derive(Debug)]
 pub enum Statement {
     Print(Expression),
     PrintStr(String),
@@ -37,29 +38,35 @@ pub enum Statement {
     Input(String),
 }
 
+#[derive(Debug)]
 pub enum Comparison {
-    Expression(Expression),
+    Right(Expression),
+    Left(Expression, Box<Comparison>),
     Compare(String, Box<Comparison>),
 }
 
+#[derive(Debug)]
 pub enum Expression {
     Term(Term),
     Add(Box<Expression>),
     Neg(Box<Expression>),
 }
 
+#[derive(Debug)]
 pub enum Term {
     Unary(Unary),
     Mul(Box<Term>),
     Div(Box<Term>),
 }
 
+#[derive(Debug)]
 pub enum Unary {
     Primary(Primary),
     Positive(Box<Unary>),
     Negative(Box<Unary>),
 }
 
+#[derive(Debug)]
 pub enum Primary {
     Integer(i64),
     Float(f64),
