@@ -36,6 +36,8 @@ pub enum Statement {
     Label(String),
     Goto(String),
     Input(String),
+    Statement(Box<Statement>, Box<Statement>),
+    End,
 }
 
 #[derive(Debug)]
@@ -48,15 +50,15 @@ pub enum Comparison {
 #[derive(Debug)]
 pub enum Expression {
     Term(Term),
-    Add(Box<Expression>),
-    Neg(Box<Expression>),
+    Add(Box<Term>, Box<Expression>),
+    Neg(Box<Term>, Box<Expression>),
 }
 
 #[derive(Debug)]
 pub enum Term {
     Unary(Unary),
-    Mul(Box<Term>),
-    Div(Box<Term>),
+    Mul(Box<Unary>, Box<Term>),
+    Div(Box<Unary>, Box<Term>),
 }
 
 #[derive(Debug)]

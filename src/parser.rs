@@ -1,6 +1,7 @@
 use crate::ast;
 use crate::lexer::{Lexer, Token};
 use anyhow::{anyhow, Ok, Result};
+
 use std::collections::HashSet;
 use std::iter::Peekable;
 
@@ -49,15 +50,39 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        match tokens.next() {
-            Some(Token::NEWLINE) => Ok(self.statement(tokens)?),
-            Some(Token::PRINT) => Ok(self.statement_print(tokens)?),
-            Some(Token::IF) => Ok(self.statement_if(tokens)?),
-            Some(Token::WHILE) => Ok(self.statement_while(tokens)?),
-            Some(Token::LABEL) => Ok(self.statement_label(tokens)?),
-            Some(Token::GOTO) => Ok(self.statement_goto(tokens)?),
-            Some(Token::LET) => Ok(self.statement_let(tokens)?),
-            Some(Token::INPUT) => Ok(self.statement_input(tokens)?),
+        match tokens.peek() {
+            Some(Token::NEWLINE) => {
+                tokens.next();
+                Ok(self.statement(tokens)?)
+            }
+            Some(Token::PRINT) => {
+                tokens.next();
+                Ok(self.statement_print(tokens)?)
+            }
+            Some(Token::IF) => {
+                tokens.next();
+                Ok(self.statement_if(tokens)?)
+            }
+            Some(Token::WHILE) => {
+                tokens.next();
+                Ok(self.statement_while(tokens)?)
+            }
+            Some(Token::LABEL) => {
+                tokens.next();
+                Ok(self.statement_label(tokens)?)
+            }
+            Some(Token::GOTO) => {
+                tokens.next();
+                Ok(self.statement_goto(tokens)?)
+            }
+            Some(Token::LET) => {
+                tokens.next();
+                Ok(self.statement_let(tokens)?)
+            }
+            Some(Token::INPUT) => {
+                tokens.next();
+                Ok(self.statement_input(tokens)?)
+            }
             Some(token) => Err(anyhow!("Invalid statement at: {token}"))?,
             None => panic!("None encountered!!!"),
         }
@@ -88,8 +113,11 @@ impl Parser {
     where
         I: Iterator<Item = &'a Token>,
     {
-        let return_value = match tokens.next() {
-            Some(Token::STRING(value)) => Ok(ast::Statement::PrintStr(value.clone())),
+        let return_value = match tokens.peek() {
+            Some(Token::STRING(value)) => {
+                tokens.next();
+                Ok(ast::Statement::PrintStr(value.clone()))
+            }
             _ => Ok(ast::Statement::Print(self.expression(tokens)?)),
         };
 
@@ -138,7 +166,7 @@ impl Parser {
 
         self.nl(tokens)?;
 
-        let statement = Box::new(self.statement(tokens)?);
+        let statement = Box::new(self.chain_statements(tokens)?);
 
         match tokens.next() {
             Some(Token::ENDWHILE) => {
@@ -150,6 +178,19 @@ impl Parser {
                 "WHILE should be followed by ENDWHILE, got: {:?}",
                 val
             )),
+        }
+    }
+
+    fn chain_statements<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
+    where
+        I: Iterator<Item = &'a Token>,
+    {
+        match self.statement(tokens) {
+            Result::Ok(statement) => Ok(ast::Statement::Statement(
+                Box::new(statement),
+                Box::new(self.chain_statements(tokens)?),
+            )),
+            Err(_) => Ok(ast::Statement::End),
         }
     }
 
@@ -263,11 +304,17 @@ impl Parser {
         match tokens.peek() {
             Some(Token::PLUS) => {
                 tokens.next();
-                Ok(ast::Expression::Add(Box::new(self.expression(tokens)?)))
+                Ok(ast::Expression::Add(
+                    Box::new(term),
+                    Box::new(self.expression(tokens)?),
+                ))
             }
             Some(Token::MINUS) => {
                 tokens.next();
-                Ok(ast::Expression::Add(Box::new(self.expression(tokens)?)))
+                Ok(ast::Expression::Add(
+                    Box::new(term),
+                    Box::new(self.expression(tokens)?),
+                ))
             }
             _ => Ok(ast::Expression::Term(term)),
         }
@@ -283,13 +330,19 @@ impl Parser {
         match tokens.peek() {
             Some(Token::ASTERISK) => {
                 tokens.next();
-                Ok(ast::Term::Mul(Box::new(self.term(tokens)?)))
+                Ok(ast::Term::Mul(
+                    Box::new(unary),
+                    Box::new(self.term(tokens)?),
+                ))
             }
             Some(Token::SLASH) => {
                 tokens.next();
-                Ok(ast::Term::Div(Box::new(self.term(tokens)?)))
+                Ok(ast::Term::Div(
+                    Box::new(unary),
+                    Box::new(self.term(tokens)?),
+                ))
             }
-            _ => Ok(ast::Term::Unary(unary)),
+            _ => Ok(ast::Term::Unary(self.unary(tokens)?)),
         }
     }
 
@@ -326,8 +379,10 @@ impl Parser {
                 }
                 Ok(ast::Primary::Variable(val.clone()))
             }
-            Some(token) => Err(anyhow!("Unexpected token! {token}"))?,
-            None => Err(anyhow!("Unexpected token! None"))?,
+            token => Err(anyhow!(
+                "Unexpected token! Expecting VARIABLE, got {:?}",
+                token.unwrap()
+            ))?,
         }
     }
 }
