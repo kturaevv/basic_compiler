@@ -21,7 +21,7 @@
 // unary ::= ["+" | "-"] primary
 // primary ::= number | var
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Ast {
     pub program: Vec<Statement>,
 }

@@ -9,18 +9,28 @@ use parser::Parser;
 
 pub struct Config {
     pub file_path: String,
+    pub debug: bool,
 }
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, &'static str> {
-        if args.len() == 1 {
+        let mut min_arg_count = 1;
+
+        let debug = args.contains(&String::from("--debug"));
+
+        if debug {
+            min_arg_count += 1;
+        }
+
+        if args.len() == min_arg_count {
             return Err("File path was not provided!");
         }
-        if args.len() > 2 {
+        if args.len() > min_arg_count + 1 {
             return Err("Too many arguments!");
         }
+
         let file_path = args[1].clone();
-        Ok(Config { file_path })
+        Ok(Config { file_path, debug })
     }
 }
 
