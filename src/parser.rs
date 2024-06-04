@@ -1,32 +1,44 @@
 use crate::ast;
 use crate::lexer::{Lexer, Token};
+
 use anyhow::{anyhow, Ok, Result};
+use tracing::{self, instrument};
 
 use std::collections::HashSet;
 use std::iter::Peekable;
-use tracing::{self, instrument};
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Parser {
     pub ast: ast::Ast,
     variables: HashSet<String>,
     labels_declared: HashSet<String>,
     labels_gotoed: HashSet<String>,
+    iter: Option<Peekable<Box<dyn Iterator<Item = Token>>>>,
 }
 
 impl Parser {
     pub fn new() -> Parser {
         Parser {
+            iter: None,
             ..Default::default()
         }
     }
 
+    fn peek(&mut self) -> Option<Token> {
+        self.iter.as_mut().unwrap().peek().cloned()
+    }
+
+    fn advance(&mut self) -> Option<Token> {
+        self.iter.as_mut().unwrap().next()
+    }
+
     /// program ::= {statement}
     pub fn check(&mut self, lexer: &Lexer) -> Result<()> {
-        let mut tokens = lexer.tokens.iter().peekable();
+        let tokens: Box<dyn Iterator<Item = Token>> = Box::new(lexer.tokens.clone().into_iter());
+        self.iter = Some(tokens.peekable());
 
-        while tokens.peek().is_some() {
-            let statement = self.statement(&mut tokens)?;
+        while self.peek().is_some() {
+            let statement = self.statement()?;
 
             self.ast.program.push(statement);
         }
@@ -50,45 +62,42 @@ impl Parser {
     ///               LET var "=" expression nl
     ///               INPUT var nl
     #[tracing::instrument(skip_all)]
-    fn statement<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
         tracing::debug!("{:#?}", self.ast);
 
-        match tokens.peek() {
+        match self.peek() {
             Some(Token::NEWLINE) => {
-                tokens.next();
-                Ok(self.statement(tokens)?)
+                self.advance();
+                Ok(self.statement()?)
             }
             Some(Token::PRINT) => {
-                tokens.next();
-                Ok(self.statement_print(tokens)?)
+                self.advance();
+                Ok(self.statement_print()?)
             }
             Some(Token::IF) => {
-                tokens.next();
-                Ok(self.statement_if(tokens)?)
+                self.advance();
+                Ok(self.statement_if()?)
             }
             Some(Token::WHILE) => {
-                tokens.next();
-                Ok(self.statement_while(tokens)?)
+                self.advance();
+                Ok(self.statement_while()?)
             }
             Some(Token::LABEL) => {
-                tokens.next();
-                Ok(self.statement_label(tokens)?)
+                self.advance();
+                Ok(self.statement_label()?)
             }
             Some(Token::GOTO) => {
-                tokens.next();
-                Ok(self.statement_goto(tokens)?)
+                self.advance();
+                Ok(self.statement_goto()?)
             }
             Some(Token::LET) => {
-                tokens.next();
-                Ok(self.statement_let(tokens)?)
+                self.advance();
+                Ok(self.statement_let()?)
             }
             Some(Token::INPUT) => {
-                tokens.next();
-                Ok(self.statement_input(tokens)?)
+                self.advance();
+                Ok(self.statement_input()?)
             }
             Some(token) => Err(anyhow!("Invalid statement at: {token}"))?,
             None => panic!("None encountered!!!"),
@@ -96,26 +105,20 @@ impl Parser {
     }
 
     #[tracing::instrument(skip_all)]
-    fn var<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<String>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn var(&mut self) -> Result<String> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        match tokens.next() {
+        match self.advance() {
             Some(Token::VARIABLE(content)) => Ok(content.clone()),
             _ => Err(anyhow!("Invalid variable!"))?,
         }
     }
 
     #[tracing::instrument(skip_all)]
-    fn nl<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<()>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn nl(&mut self) -> Result<()> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        match tokens.next() {
+        match self.advance() {
             Some(Token::NEWLINE) => Ok(()),
             val => Err(anyhow!("Expected NEWLINE, got {:?}", val))?,
         }
@@ -123,47 +126,41 @@ impl Parser {
 
     /// statement ::= PRINT (expression | string) nl
     #[tracing::instrument(skip_all)]
-    fn statement_print<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement_print(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let return_value = match tokens.peek() {
+        let return_value = match self.peek() {
             Some(Token::STRING(value)) => {
-                tokens.next();
+                self.advance();
                 Ok(ast::Statement::PrintStr(value.clone()))
             }
-            _ => Ok(ast::Statement::Print(self.expression(tokens)?)),
+            _ => Ok(ast::Statement::Print(self.expression()?)),
         };
 
-        self.nl(tokens)?;
+        self.nl()?;
 
         return_value
     }
 
     /// statement ::= IF comparison "THEN" nl {statement} "ENDIF" nl
     #[tracing::instrument(skip_all)]
-    fn statement_if<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
-        let comparison = self.comparison(tokens)?;
+    fn statement_if(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
+        let comparison = self.comparison()?;
 
-        match tokens.next() {
+        match self.advance() {
             Some(Token::THEN) => (),
             val => return Err(anyhow!("IF should be followed by THEN, got {:?}", val)),
         }
 
-        self.nl(tokens)?;
+        self.nl()?;
 
-        let statement = Box::new(self.statement(tokens)?);
+        let statement = Box::new(self.statement()?);
 
-        match tokens.next() {
+        match self.advance() {
             Some(Token::ENDIF) => {
-                tokens.next();
-                self.nl(tokens)?;
+                self.advance();
+                self.nl()?;
                 Ok(ast::Statement::If(comparison, statement))
             }
             _ => Err(anyhow!("IF should be followed by ENDIF")),
@@ -172,26 +169,23 @@ impl Parser {
 
     /// statement ::= WHILE comparison "REPEAT" nl {statement} "ENDWHILE" nl
     #[tracing::instrument(skip_all)]
-    fn statement_while<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement_while(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let comparison = self.comparison(tokens)?;
+        let comparison = self.comparison()?;
 
-        match tokens.next() {
+        match self.advance() {
             Some(Token::REPEAT) => (),
             val => return Err(anyhow!("WHILE should be followed by REPEAT, got {:?}", val)),
         }
 
-        self.nl(tokens)?;
+        self.nl()?;
 
-        let statement = Box::new(self.chain_statements(tokens)?);
+        let statement = Box::new(self.chain_statements()?);
 
-        match tokens.next() {
+        match self.advance() {
             Some(Token::ENDWHILE) => {
-                self.nl(tokens)?;
+                self.nl()?;
                 Ok(ast::Statement::While(comparison, statement))
             }
             val => Err(anyhow!(
@@ -202,18 +196,15 @@ impl Parser {
     }
 
     #[tracing::instrument(skip_all)]
-    fn chain_statements<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        match self.statement(tokens) {
+    fn chain_statements(&mut self) -> Result<ast::Statement> {
+        match self.statement() {
             Result::Ok(statement) => Ok(ast::Statement::Statement(
                 Box::new(statement),
-                Box::new(self.chain_statements(tokens)?),
+                Box::new(self.chain_statements()?),
             )),
             Err(err) => {
                 tracing::debug!("Chain end.");
-                match tokens.peek().unwrap() {
+                match self.peek().unwrap() {
                     Token::ENDWHILE => Ok(ast::Statement::End),
                     _ => Err(err),
                 }
@@ -223,112 +214,97 @@ impl Parser {
 
     /// statement ::= LABEL var nl
     #[tracing::instrument(skip_all)]
-    fn statement_label<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement_label(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let var = self.var(tokens)?;
+        let var = self.var()?;
 
         if !self.labels_declared.insert(var.clone()) {
             return Err(anyhow!("Label aready exists! {var}"));
         }
 
-        self.nl(tokens)?;
+        self.nl()?;
         Ok(ast::Statement::Label(var))
     }
 
     /// statement ::= GOTO var nl
     #[tracing::instrument(skip_all)]
-    fn statement_goto<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement_goto(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let var = self.var(tokens)?;
+        let var = self.var()?;
 
         self.labels_gotoed.insert(var.clone());
 
-        self.nl(tokens)?;
+        self.nl()?;
 
         Ok(ast::Statement::Goto(var))
     }
 
     /// statement ::= LET var "=" expression nl
     #[tracing::instrument(skip_all)]
-    fn statement_let<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement_let(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let var = self.var(tokens)?;
+        let var = self.var()?;
 
         self.variables.insert(var.clone());
 
-        let result = match tokens.next() {
-            Some(Token::EQ) => self.expression(tokens)?,
+        let result = match self.advance() {
+            Some(Token::EQ) => self.expression()?,
             val => return Err(anyhow!("LET should be followed by '=', got {:?}", val)),
         };
 
-        self.nl(tokens)?;
+        self.nl()?;
 
         Ok(ast::Statement::Let(var, result))
     }
 
     /// statement ::= INPUT var nl
     #[instrument(skip_all)]
-    fn statement_input<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Statement>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn statement_input(&mut self) -> Result<ast::Statement> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let var = self.var(tokens)?;
+        let var = self.var()?;
 
         self.variables.insert(var.clone());
 
-        self.nl(tokens)?;
+        self.nl()?;
 
         Ok(ast::Statement::Input(var))
     }
 
     /// comparison ::= expression (("==" | "!=" | ">" | ">=" | "<" | "<=") expression)+
     #[instrument(skip_all)]
-    fn comparison<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Comparison>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn comparison(&mut self) -> Result<ast::Comparison> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let left_expr = self.expression(tokens)?;
+        let left_expr = self.expression()?;
 
-        let right_expr = match tokens.peek() {
+        let right_expr = match self.peek() {
             Some(Token::EQEQ) => {
-                tokens.next();
-                ast::Comparison::Compare("==".to_string(), Box::new(self.comparison(tokens)?))
+                self.advance();
+                ast::Comparison::Compare("==".to_string(), Box::new(self.comparison()?))
             }
             Some(Token::NOTEQ) => {
-                tokens.next();
-                ast::Comparison::Compare("!=".to_string(), Box::new(self.comparison(tokens)?))
+                self.advance();
+                ast::Comparison::Compare("!=".to_string(), Box::new(self.comparison()?))
             }
             Some(Token::LT) => {
-                tokens.next();
-                ast::Comparison::Compare("<".to_string(), Box::new(self.comparison(tokens)?))
+                self.advance();
+                ast::Comparison::Compare("<".to_string(), Box::new(self.comparison()?))
             }
             Some(Token::LTEQ) => {
-                tokens.next();
-                ast::Comparison::Compare("<=".to_string(), Box::new(self.comparison(tokens)?))
+                self.advance();
+                ast::Comparison::Compare("<=".to_string(), Box::new(self.comparison()?))
             }
             Some(Token::GT) => {
-                tokens.next();
-                ast::Comparison::Compare(">".to_string(), Box::new(self.comparison(tokens)?))
+                self.advance();
+                ast::Comparison::Compare(">".to_string(), Box::new(self.comparison()?))
             }
             Some(Token::GTEQ) => {
-                tokens.next();
-                ast::Comparison::Compare(">=".to_string(), Box::new(self.comparison(tokens)?))
+                self.advance();
+                ast::Comparison::Compare(">=".to_string(), Box::new(self.comparison()?))
             }
             _ => return Ok(ast::Comparison::Right(left_expr)),
         };
@@ -338,27 +314,24 @@ impl Parser {
 
     /// expression ::= term {( "-" | "+" ) term}
     #[instrument(skip_all)]
-    fn expression<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Expression>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn expression(&mut self) -> Result<ast::Expression> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let term = self.term(tokens)?;
+        let term = self.term()?;
 
-        match tokens.peek() {
+        match self.peek() {
             Some(Token::PLUS) => {
-                tokens.next();
+                self.advance();
                 Ok(ast::Expression::Add(
                     Box::new(term),
-                    Box::new(self.expression(tokens)?),
+                    Box::new(self.expression()?),
                 ))
             }
             Some(Token::MINUS) => {
-                tokens.next();
+                self.advance();
                 Ok(ast::Expression::Add(
                     Box::new(term),
-                    Box::new(self.expression(tokens)?),
+                    Box::new(self.expression()?),
                 ))
             }
             _ => Ok(ast::Expression::Term(term)),
@@ -367,28 +340,19 @@ impl Parser {
 
     /// term ::= unary {( "/" | "*" ) unary}
     #[instrument(skip_all)]
-    fn term<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Term>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn term(&mut self) -> Result<ast::Term> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        let unary = self.unary(tokens)?;
+        let unary = self.unary()?;
 
-        match tokens.peek() {
+        match self.peek() {
             Some(Token::ASTERISK) => {
-                tokens.next();
-                Ok(ast::Term::Mul(
-                    Box::new(unary),
-                    Box::new(self.term(tokens)?),
-                ))
+                self.advance();
+                Ok(ast::Term::Mul(Box::new(unary), Box::new(self.term()?)))
             }
             Some(Token::SLASH) => {
-                tokens.next();
-                Ok(ast::Term::Div(
-                    Box::new(unary),
-                    Box::new(self.term(tokens)?),
-                ))
+                self.advance();
+                Ok(ast::Term::Div(Box::new(unary), Box::new(self.term()?)))
             }
             _ => Ok(ast::Term::Unary(unary)),
         }
@@ -396,38 +360,32 @@ impl Parser {
 
     /// unary ::= ["+" | "-"] primary
     #[instrument(skip_all)]
-    fn unary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Unary>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn unary(&mut self) -> Result<ast::Unary> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        match tokens.peek() {
+        match self.peek() {
             Some(Token::PLUS) => {
-                tokens.next();
-                Ok(ast::Unary::Positive(Box::new(self.unary(tokens)?)))
+                self.advance();
+                Ok(ast::Unary::Positive(Box::new(self.unary()?)))
             }
             Some(Token::MINUS) => {
-                tokens.next();
-                Ok(ast::Unary::Negative(Box::new(self.unary(tokens)?)))
+                self.advance();
+                Ok(ast::Unary::Negative(Box::new(self.unary()?)))
             }
-            _ => Ok(ast::Unary::Primary(self.primary(tokens)?)),
+            _ => Ok(ast::Unary::Primary(self.primary()?)),
         }
     }
 
     /// primary ::= number | var
     #[instrument(skip_all)]
-    fn primary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<ast::Primary>
-    where
-        I: Iterator<Item = &'a Token> + std::fmt::Debug,
-    {
-        tracing::debug!("Current token {:?}", tokens.peek());
+    fn primary(&mut self) -> Result<ast::Primary> {
+        tracing::debug!("Current token {:?}", self.peek());
 
-        match tokens.next() {
-            Some(Token::INTEGER(val)) => Ok(ast::Primary::Integer(*val)),
-            Some(Token::FLOAT(val)) => Ok(ast::Primary::Float(*val)),
+        match self.advance() {
+            Some(Token::INTEGER(val)) => Ok(ast::Primary::Integer(val)),
+            Some(Token::FLOAT(val)) => Ok(ast::Primary::Float(val)),
             Some(Token::VARIABLE(val)) => {
-                if !self.variables.contains(val) {
+                if !self.variables.contains(val.as_str()) {
                     Err(anyhow!("Variable referenced before assignment!"))?
                 }
                 Ok(ast::Primary::Variable(val.clone()))
