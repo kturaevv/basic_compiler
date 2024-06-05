@@ -4,6 +4,7 @@ pub mod lexer;
 pub mod parser;
 
 use anyhow::Result;
+use emitter::Emitter;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -42,6 +43,10 @@ pub fn run(config: Config) -> Result<()> {
 
     let mut parser = Parser::new();
     parser.check(&lexer)?;
+
+    let mut emitter = Emitter::new("./out.c");
+    emitter.process(parser);
+    emitter.write_to_file();
 
     Ok(())
 }

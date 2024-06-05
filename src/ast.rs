@@ -42,8 +42,8 @@ pub enum Statement {
 
 #[derive(Debug)]
 pub enum Comparison {
-    Right(Expression),
-    Left(Expression, Box<Comparison>),
+    Left(Expression),
+    Right(Expression, Box<Comparison>),
     Compare(String, Box<Comparison>),
 }
 
@@ -51,7 +51,7 @@ pub enum Comparison {
 pub enum Expression {
     Term(Term),
     Add(Box<Term>, Box<Expression>),
-    Neg(Box<Term>, Box<Expression>),
+    Sub(Box<Term>, Box<Expression>),
 }
 
 #[derive(Debug)]

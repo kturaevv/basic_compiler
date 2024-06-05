@@ -11,7 +11,7 @@ use std::vec::IntoIter;
 #[derive(Default)]
 pub struct Parser {
     pub ast: ast::Ast,
-    variables: HashSet<String>,
+    pub variables: HashSet<String>,
     labels_declared: HashSet<String>,
     labels_gotoed: HashSet<String>,
     iter: Option<Peekable<IntoIter<Token>>>,
@@ -159,7 +159,6 @@ impl Parser {
 
         match self.advance() {
             Some(Token::ENDIF) => {
-                self.advance();
                 self.nl()?;
                 Ok(ast::Statement::If(comparison, statement))
             }
@@ -306,10 +305,10 @@ impl Parser {
                 self.advance();
                 ast::Comparison::Compare(">=".to_string(), Box::new(self.comparison()?))
             }
-            _ => return Ok(ast::Comparison::Right(left_expr)),
+            _ => return Ok(ast::Comparison::Left(left_expr)),
         };
 
-        Ok(ast::Comparison::Left(left_expr, Box::new(right_expr)))
+        Ok(ast::Comparison::Right(left_expr, Box::new(right_expr)))
     }
 
     /// expression ::= term {( "-" | "+" ) term}
@@ -329,7 +328,7 @@ impl Parser {
             }
             Some(Token::MINUS) => {
                 self.advance();
-                Ok(ast::Expression::Add(
+                Ok(ast::Expression::Sub(
                     Box::new(term),
                     Box::new(self.expression()?),
                 ))
