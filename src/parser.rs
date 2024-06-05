@@ -6,6 +6,7 @@ use tracing::{self, instrument};
 
 use std::collections::HashSet;
 use std::iter::Peekable;
+use std::vec::IntoIter;
 
 #[derive(Default)]
 pub struct Parser {
@@ -13,7 +14,7 @@ pub struct Parser {
     variables: HashSet<String>,
     labels_declared: HashSet<String>,
     labels_gotoed: HashSet<String>,
-    iter: Option<Peekable<Box<dyn Iterator<Item = Token>>>>,
+    iter: Option<Peekable<IntoIter<Token>>>,
 }
 
 impl Parser {
@@ -34,8 +35,7 @@ impl Parser {
 
     /// program ::= {statement}
     pub fn check(&mut self, lexer: &Lexer) -> Result<()> {
-        let tokens: Box<dyn Iterator<Item = Token>> = Box::new(lexer.tokens.clone().into_iter());
-        self.iter = Some(tokens.peekable());
+        self.iter = Some(lexer.tokens.clone().into_iter().peekable());
 
         while self.peek().is_some() {
             let statement = self.statement()?;
